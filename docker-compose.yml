@@ -1,5 +1,5 @@
-# Infraestrutura local. Nesta fase só o Postgres; RabbitMQ, Redis, web (Gunicorn),
-# workers do Celery, beat e flower entram conforme o projeto avança.
+# Infraestrutura local: Postgres e Redis. RabbitMQ, web (Gunicorn), workers do Celery, beat e
+# flower entram conforme o projeto avança.
 name: clipstack
 
 services:
@@ -18,6 +18,17 @@ services:
     healthcheck:
       # pg_isready: responde OK só quando o Postgres já aceita conexões.
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    # Cache (estatísticas), contadores de throttling e result backend do Celery.
+    image: redis:8-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
