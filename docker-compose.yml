@@ -1,0 +1,26 @@
+# Infraestrutura local. Nesta fase só o Postgres; RabbitMQ, Redis, web (Gunicorn),
+# workers do Celery, beat e flower entram conforme o projeto avança.
+name: clipstack
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clipstack}
+      POSTGRES_USER: ${POSTGRES_USER:-clipstack}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clipstack}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Volume nomeado: os dados sobrevivem a `docker compose down` (só somem com `down -v`).
+      # A partir do Postgres 18 o volume é montado em /var/lib/postgresql (não mais .../data).
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      # pg_isready: responde OK só quando o Postgres já aceita conexões.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
