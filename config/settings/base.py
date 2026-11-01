@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from corsheaders.defaults import default_headers
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -29,6 +30,8 @@ DJANGO_APPS = [
     "django.contrib.staticfiles",
 ]
 THIRD_PARTY_APPS = [
+    "corsheaders",
+    "django_filters",
     "rest_framework",
     # Tabelas OutstandingToken/BlacklistedToken: logout e rotação de refresh tokens.
     "rest_framework_simplejwt.token_blacklist",
@@ -47,6 +50,9 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 # A ordem importa: na ida a requisição passa de cima para baixo; na volta, de baixo para cima.
 # Detalhado em docs/00-antes-da-view.md (etapa 7 adiciona CORS e RequestId).
 MIDDLEWARE = [
+    # O mais alto possível: responde o preflight OPTIONS sem passar pelo resto e põe os
+    # headers CORS também nas respostas geradas por outros middlewares (erros, redirects).
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -124,6 +130,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 # MEDIA: arquivos enviados pelos usuários (vídeos e thumbnails).
 MEDIA_URL = "media/"
 MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
+
+# ---------------------------------------------------------------- CORS
+# CORS (Cross-Origin Resource Sharing) é regra do NAVEGADOR: o JS de outra origem só lê a
+# resposta se o servidor permitir. Não protege a API (curl/Postman ignoram); quem protege é
+# autenticação + permissão. Lista explícita de origens, nunca CORS_ALLOW_ALL_ORIGINS.
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"])
+# Headers que o JS do frontend pode mandar além dos padrões (authorization, content-type...).
+CORS_ALLOW_HEADERS = (*default_headers, "idempotency-key", "x-request-id")
+# Headers da resposta que o JS pode LER (por padrão, só os "simples").
+CORS_EXPOSE_HEADERS = ["X-Request-ID", "Idempotent-Replayed", "Retry-After"]
 
 # ---------------------------------------------------------------- upload de vídeos
 # Regras de formato do upload, validadas no serializer e expostas ao frontend em /meta/.

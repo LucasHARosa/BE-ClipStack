@@ -19,8 +19,9 @@ REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"] = [
 
 # django-debug-toolbar: mostra queries SQL, tempo e cache de cada página. Só em dev.
 INSTALLED_APPS += ["debug_toolbar"]
-# Entra o mais cedo possível, mas depois de middlewares que codificam a resposta (ex.: GZip).
-MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")
+# Entra o mais cedo possível, mas depois de middlewares que codificam a resposta (ex.: GZip)
+# e depois do CorsMiddleware (que precisa ser o primeiro).
+MIDDLEWARE.insert(1, "debug_toolbar.middleware.DebugToolbarMiddleware")
 INTERNAL_IPS = ["127.0.0.1"]
 
 # Emails impressos no console em vez de enviados.
