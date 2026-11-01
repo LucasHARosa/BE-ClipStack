@@ -84,6 +84,18 @@ DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# ---------------------------------------------------------------- cache
+# Redis (backend nativo do Django 4+). Compartilhado entre TODOS os processos: com vários
+# workers do Gunicorn, um cache em memória local daria um contador de throttling por worker
+# (o limite efetivo seria N vezes maior) e um cache de estatísticas diferente em cada um.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env("REDIS_URL", default="redis://localhost:6379/0"),
+        "KEY_PREFIX": "clipstack",
+    }
+}
+
 # ---------------------------------------------------------------- autenticação
 # User customizado definido desde o primeiro migrate: trocar AUTH_USER_MODEL depois que as
 # tabelas existem exige refazer migrations e mexer em FKs na mão.
