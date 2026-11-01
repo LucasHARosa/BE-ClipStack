@@ -6,12 +6,15 @@ run_job com retry; a regra fica aqui, testável sem Celery.
 """
 
 import logging
+from datetime import timedelta
 from functools import partial
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
 
+from apps.notifications import tasks as notification_tasks
 from apps.processing.exceptions import ProcessingAlreadyActive
 from apps.processing.models import ProcessingJob
 from apps.processing.processors import get_video_processor
@@ -44,9 +47,26 @@ def start_processing(*, video):
 
 
 def enqueue_job(job_id):
-    # Etapa 8: publica a task process_video na fila "processing" do RabbitMQ. Até lá, o job
-    # fica "queued" e pode ser processado à mão com: manage.py process_job <id>.
+    # Import local: tasks.py importa este módulo (import circular no topo).
+    from apps.processing.tasks import process_video
+
+    # Publica no RabbitMQ; o CELERY_TASK_ROUTES manda para a fila "processing". Passa o ID,
+    # nunca o objeto: a mensagem é JSON e pode esperar na fila; o worker lê o estado atual.
+    process_video.delay(job_id)
     logger.info("job_enqueued", extra={"job_id": job_id})
+
+
+def _notify_finished(job, *, succeeded):
+    # Avisa o dono na fila "default" (leve), depois do commit do resultado. event_key torna a
+    # notificação idempotente se esta função for chamada de novo para o mesmo job.
+    transaction.on_commit(
+        partial(
+            notification_tasks.notify_video_processed.delay,
+            job.video_id,
+            succeeded,
+            f"job:{job.pk}:finished",
+        )
+    )
 
 
 def run_job(*, job_id, processor=None):
@@ -91,6 +111,7 @@ def run_job(*, job_id, processor=None):
             status=ProcessingJob.Status.COMPLETED, progress=100, finished_at=timezone.now()
         )
         video_services.set_video_status(video=video, status=Video.Status.COMPLETED)
+        _notify_finished(job, succeeded=True)
 
     job.refresh_from_db()
     return job
@@ -105,11 +126,33 @@ def fail_job(*, job_id, error_message):
             .select_related("video")
             .get(pk=job_id)
         )
-        if job.status == ProcessingJob.Status.COMPLETED:
+        # Idempotente: job já terminado (por outra execução ou pelo Beat) não muda.
+        if job.status in {ProcessingJob.Status.COMPLETED, ProcessingJob.Status.FAILED}:
             return job
         job.status = ProcessingJob.Status.FAILED
         job.error_message = error_message[:2000]
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "error_message", "finished_at"])
         video_services.set_video_status(video=job.video, status=Video.Status.FAILED)
+        _notify_finished(job, succeeded=False)
     return job
+
+
+def fail_stuck_jobs():
+    cutoff = timezone.now() - timedelta(minutes=settings.STUCK_JOB_TIMEOUT_MINUTES)
+    # Usa o índice (status, started_at) criado no model para esta consulta.
+    stuck_ids = list(
+        ProcessingJob.objects.filter(
+            status=ProcessingJob.Status.PROCESSING, started_at__lt=cutoff
+        ).values_list("pk", flat=True)
+    )
+    for job_id in stuck_ids:
+        fail_job(
+            job_id=job_id,
+            error_message=(
+                f"Job preso em processing por mais de {settings.STUCK_JOB_TIMEOUT_MINUTES} min."
+            ),
+        )
+    if stuck_ids:
+        logger.warning("stuck_jobs_failed", extra={"job_ids": stuck_ids})
+    return len(stuck_ids)
