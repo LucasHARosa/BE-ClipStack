@@ -39,6 +39,37 @@ select = ["E", "W", "F", "I", "B", "UP", "DJ", "S", "SIM"]
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config"]
 
+# ---------------------------------------------------------------- import-linter
+# Fronteiras entre apps, verificadas no CI (`lint-imports`). O Django deixa qualquer app
+# importar qualquer outra; os contratos impedem dependências circulares e acoplamento.
+# Direção permitida: core <- accounts <- videos <- processing / notifications.
+[tool.importlinter]
+root_package = "apps"
+
+[[tool.importlinter.contracts]]
+name = "core é a base: não depende das apps de domínio"
+type = "forbidden"
+source_modules = ["apps.core"]
+forbidden_modules = ["apps.accounts", "apps.videos", "apps.processing", "apps.notifications"]
+
+[[tool.importlinter.contracts]]
+name = "accounts não depende das apps de conteúdo"
+type = "forbidden"
+source_modules = ["apps.accounts"]
+forbidden_modules = ["apps.videos", "apps.processing", "apps.notifications"]
+
+[[tool.importlinter.contracts]]
+name = "videos não conhece processing nem notifications"
+type = "forbidden"
+source_modules = ["apps.videos"]
+forbidden_modules = ["apps.processing", "apps.notifications"]
+
+[[tool.importlinter.contracts]]
+name = "notifications não depende de processing (evita ciclo)"
+type = "forbidden"
+source_modules = ["apps.notifications"]
+forbidden_modules = ["apps.processing"]
+
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings.test"
