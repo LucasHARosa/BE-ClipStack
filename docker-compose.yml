@@ -1,5 +1,4 @@
-# Infraestrutura local: Postgres e Redis. RabbitMQ, web (Gunicorn), workers do Celery, beat e
-# flower entram conforme o projeto avança.
+# Infraestrutura local: Postgres, Redis e RabbitMQ.
 name: clipstack
 
 services:
@@ -33,5 +32,23 @@ services:
       timeout: 3s
       retries: 10
 
+  rabbitmq:
+    # Broker do Celery. A imagem "-management" traz o painel web em http://localhost:15672.
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-clipstack}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-clipstack}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
+  rabbitmq_data:
