@@ -56,6 +56,8 @@ class AdminUserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
         user = self.get_object()
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = services.set_user_role(user=user, role=serializer.validated_data["role"])
+        user = services.set_user_role(
+            user=user, role=serializer.validated_data["role"], actor=request.user
+        )
         user.videos_count = user.videos.count()
         return Response(AdminUserSerializer(user, context=self.get_serializer_context()).data)

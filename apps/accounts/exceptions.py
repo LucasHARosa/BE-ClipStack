@@ -1,1 +1,8 @@
-"""Exceções de domínio da app (herdam de apps.core.exceptions.DomainError, etapa 5)."""
+"""Exceções de domínio da app accounts."""
+
+from apps.core.exceptions import ConflictError
+
+
+class CannotChangeOwnRole(ConflictError):
+    code = "cannot_change_own_role"
+    message = "Você não pode alterar o seu próprio papel."
