@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.idempotency import run_idempotent
+from apps.core.permissions import IsAdminRole, IsAuthorOrAdmin, IsOwnerOrReadOnly
 from apps.videos import selectors, services
 from apps.videos.api.serializers import (
     CommentSerializer,
@@ -17,10 +18,6 @@ from apps.videos.api.serializers import (
     VideoUploadSerializer,
 )
 from apps.videos.models import Tag, Video
-
-# Permissões desta etapa: só autenticação (padrão global) e IsAdminUser na escrita de tags.
-# A matriz completa (dono edita, admin modera, 404 x 403) entra na etapa 6.
-
 
 # --------------------------------------------------------------------------- FBV
 
@@ -67,6 +64,17 @@ class VideoViewSet(viewsets.ModelViewSet):
         if self.action == "destroy":
             return Video.objects.visible_to(self.request.user)
         return selectors.video_queryset(user=self.request.user, with_jobs=self.action != "list")
+
+    def get_permissions(self):
+        # Matriz de permissões (o que o usuário pode FAZER com o que vê):
+        #   editar e reprocessar → só o dono (o admin vê o vídeo, mas recebe 403)
+        #   apagar               → o dono ou o admin (moderação)
+        # Composição com | : basta uma das permissões aceitar.
+        if self.action in {"update", "partial_update", "reprocess"}:
+            return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
+        if self.action == "destroy":
+            return [permissions.IsAuthenticated(), (IsOwnerOrReadOnly | IsAdminRole)()]
+        return super().get_permissions()
 
     def get_serializer_class(self):
         # Um serializer por ação: entrada e saída têm formatos diferentes.
@@ -127,7 +135,7 @@ class TagViewSet(viewsets.ModelViewSet):
         # get_permissions(): permissões diferentes por ação.
         if self.action in {"list", "retrieve"}:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminRole()]
 
 
 # --------------------------------------------------------------------------- GenericViewSet
@@ -142,6 +150,13 @@ class CommentViewSet(
     # GenericViewSet + mixins: CRUD PARCIAL. Comentário não tem update (nem retrieve isolado).
     # Rota aninhada /videos/{video_pk}/comments/, montada à mão em urls.py.
     serializer_class = CommentSerializer
+
+    def get_permissions(self):
+        # Comentar: qualquer um que VÊ o vídeo (get_video → 404 se não vê).
+        # Apagar: o autor ou o admin; os outros recebem 403.
+        if self.action == "destroy":
+            return [permissions.IsAuthenticated(), IsAuthorOrAdmin()]
+        return super().get_permissions()
 
     def get_video(self):
         # O vídeo precisa estar visível para o usuário; senão 404 (inclusive para comentar).
