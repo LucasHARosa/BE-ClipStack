@@ -200,6 +200,51 @@ REST_FRAMEWORK = {
     },
 }
 
+# ---------------------------------------------------------------- Celery
+# Broker = RabbitMQ (guarda e entrega as mensagens, com ack real). Result backend = Redis
+# (estado/resultado das tasks, usado pelo Flower). São papéis diferentes.
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="amqp://clipstack:clipstack@localhost:5672//")
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="redis://localhost:6379/1")
+CELERY_RESULT_EXPIRES = 60 * 60 * 24
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TIMEZONE = TIME_ZONE
+
+# Duas filas: "processing" (vídeo: pesado, lento, CPU/ffmpeg) e "default" (notificações e
+# emails: leve, rápido). Com uma fila só, 50 vídeos na frente atrasariam todos os emails.
+# Cada fila tem o próprio worker, escalado de forma independente.
+CELERY_TASK_DEFAULT_QUEUE = "default"
+CELERY_TASK_ROUTES = {"apps.processing.tasks.process_video": {"queue": "processing"}}
+
+# Prefetch 1: o worker só pega a próxima mensagem quando termina a atual. Com tasks longas,
+# o padrão (4 por processo) deixaria mensagens "presas" num worker ocupado enquanto outro
+# está livre.
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# Com acks_late: se o processo do worker morrer no meio (OOM, kill), a mensagem volta à fila.
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# Rede de segurança contra task travada: soft (exceção dentro da task) e hard (mata o processo).
+CELERY_TASK_SOFT_TIME_LIMIT = 10 * 60
+CELERY_TASK_TIME_LIMIT = 11 * 60
+
+# Celery Beat: agenda tarefas periódicas (publica a mensagem; quem executa é um worker).
+# Rodar UMA instância do beat; duas publicariam tudo em dobro.
+CELERY_BEAT_SCHEDULE = {
+    "fail-stuck-processing-jobs": {
+        "task": "apps.processing.tasks.fail_stuck_jobs",
+        "schedule": 5 * 60,  # a cada 5 minutos
+    },
+    "purge-old-idempotency-keys": {
+        "task": "apps.core.tasks.purge_idempotency_keys",
+        "schedule": 60 * 60,  # a cada hora
+    },
+}
+# Job em "processing" há mais que isso (worker morreu, mensagem perdida) vira failed.
+STUCK_JOB_TIMEOUT_MINUTES = env.int("STUCK_JOB_TIMEOUT_MINUTES", default=15)
+IDEMPOTENCY_KEY_TTL_HOURS = 24
+
+# ---------------------------------------------------------------- email
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="ClipStack <no-reply@clipstack.local>")
+
 # ---------------------------------------------------------------- logging
 # JSON no console (stdout): em container, quem coleta os logs é a plataforma (Docker, k8s),
 # não arquivos. Cada linha leva request_id e user_id (RequestContextFilter).

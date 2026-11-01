@@ -11,6 +11,11 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 # tem o seu, sem vazar contadores de throttling entre execuções).
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
+# Broker em memória: publicar uma task nos testes não precisa de RabbitMQ (os testes chamam
+# as tasks diretamente ou mockam o .delay/.apply_async).
+CELERY_BROKER_URL = "memory://"
+CELERY_RESULT_BACKEND = "cache+memory://"
+
 # Processador fake sem espera: os testes não dormem.
 VIDEO_PROCESSOR_CLASS = "apps.processing.processors.FakeVideoProcessor"
 FAKE_PROCESSOR_STEP_SECONDS = 0
