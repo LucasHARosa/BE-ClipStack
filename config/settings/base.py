@@ -120,4 +120,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 # Configuração global do DRF; cada etapa acrescenta (auth, permissões, paginação, throttle...).
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    # Fechado por padrão: todo endpoint exige login, e quem é público declara AllowAny.
+    # Esquecer a permissão numa view nova não a deixa aberta.
+    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
 }

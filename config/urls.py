@@ -14,5 +14,8 @@ if settings.DEBUG:
     # Em dev o próprio Django serve os arquivos de mídia; em produção é o storage/Nginx.
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
+    # Login/logout por sessão do API navegável do DRF (só para explorar a API no navegador).
+    urlpatterns += [path("api-auth/", include("rest_framework.urls"))]
+
     if "debug_toolbar" in settings.INSTALLED_APPS:
         urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
