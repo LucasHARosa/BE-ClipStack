@@ -174,8 +174,49 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 com a mesma chave devolve a resposta original (com `Idempotent-Replayed: true`) em vez de criar
 outro vídeo, inclusive quando as duas chegam ao mesmo tempo.
 
-**Erros de regra de negócio** saem no formato
-`{"error": {"code": "video_not_reprocessable", "message": "...", "details": {...}}}`.
+### Listagem, filtros e paginação
+
+`GET /videos/` aceita filtros combináveis:
+
+| Parâmetro | Exemplo |
+|---|---|
+| Status, visibilidade, tag | `?status=completed&visibility=public&tag=vlog` |
+| Intervalo de datas | `?created_after=2026-01-01&created_before=2026-06-30` |
+| Só os meus | `?mine=true` |
+| Busca no título | `?search=django` |
+| Ordenação | `?ordering=-created_at` ou `?ordering=title` |
+| Paginação | `?page=2&page_size=50` (padrão 20, máximo 100) |
+
+As respostas paginadas trazem `count`, `next`, `previous` e `results`. As notificações usam
+paginação por **cursor** (`?cursor=...`), estável mesmo com notificações novas chegando.
+
+### Erros
+
+Todo erro sai no mesmo formato:
+
+```json
+{"error": {"code": "validation_error", "message": "Os dados enviados são inválidos.",
+           "details": {"title": ["Este campo é obrigatório."]}}}
+```
+
+| Status | `code` (exemplos) |
+|---|---|
+| 400 | `validation_error` |
+| 401 | `not_authenticated`, `token_not_valid` |
+| 403 | `permission_denied` |
+| 404 | `not_found` |
+| 409 | `video_not_reprocessable`, `processing_already_active`, `cannot_change_own_role` |
+| 422 | `idempotency_key_reused` |
+| 429 | `throttled` (com `details.wait_seconds` e o header `Retry-After`) |
+| 500 | `server_error` |
+
+### Limites, CORS e rastreio
+
+- **Rate limit** (contadores no Redis): 30/min sem login, 120/min por usuário, **10 uploads por
+  hora** e **5 tentativas de login por minuto**.
+- **CORS**: só a origem do frontend (`CORS_ALLOWED_ORIGINS`) pode chamar a API pelo navegador.
+- **X-Request-ID**: toda resposta traz um id (ou propaga o recebido). Os logs saem em JSON, uma
+  linha por evento, com `request_id` e `user_id`.
 
 ## Autenticação e permissões
 
@@ -253,7 +294,7 @@ uv run pytest                     # testes
 - [x] Views, URLs e routers
 - [x] Services, selectors, exceções de domínio, Idempotency-Key
 - [x] Autenticação JWT, papéis e permissões
-- [ ] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
+- [x] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
 - [ ] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
 - [ ] Cache de estatísticas e health check assíncrono
 - [ ] Testes automatizados
