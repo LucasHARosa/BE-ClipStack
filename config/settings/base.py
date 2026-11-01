@@ -177,9 +177,19 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     # Converte DomainError (lançada pelos services) em resposta HTTP.
     "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
-    # Rate do scope "login" (ScopedRateThrottle na view de login). Os demais scopes e o
-    # cache no Redis entram na configuração de throttling.
-    "DEFAULT_THROTTLE_RATES": {"login": "5/minute"},
+    # Throttling: contadores no cache (Redis). Anônimo por IP; logado por id do usuário.
+    # O "user" comporta o polling do frontend (1 GET a cada 2 s = 30/min por vídeo aberto).
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": env("THROTTLE_ANON", default="30/minute"),
+        "user": env("THROTTLE_USER", default="120/minute"),
+        # Scopes (ScopedRateThrottle): limites próprios em endpoints sensíveis.
+        "upload": env("THROTTLE_UPLOAD", default="10/hour"),
+        "login": env("THROTTLE_LOGIN", default="5/minute"),
+    },
 }
 
 # ---------------------------------------------------------------- logging

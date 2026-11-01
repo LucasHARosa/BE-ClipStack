@@ -4,6 +4,7 @@ from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from apps.core.idempotency import run_idempotent
@@ -75,6 +76,14 @@ class VideoViewSet(viewsets.ModelViewSet):
         if self.action == "destroy":
             return [permissions.IsAuthenticated(), (IsOwnerOrReadOnly | IsAdminRole)()]
         return super().get_permissions()
+
+    def get_throttles(self):
+        # Upload: além dos limites padrão (anon/user), o scope "upload" (10/hora por usuário).
+        # throttle_scope só tem efeito com o ScopedRateThrottle na lista.
+        if self.action == "create":
+            self.throttle_scope = "upload"
+            return [*super().get_throttles(), ScopedRateThrottle()]
+        return super().get_throttles()
 
     def get_serializer_class(self):
         # Um serializer por ação: entrada e saída têm formatos diferentes.
