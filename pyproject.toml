@@ -5,15 +5,18 @@ description = "API de upload e processamento assíncrono de vídeos com Django, 
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "celery[redis]>=5.6.3",
     "django~=5.2",
     "django-cors-headers>=4.9.0",
     "django-environ>=0.14.0",
     "django-filter>=26.2",
     "djangorestframework>=3.18.3",
     "djangorestframework-simplejwt>=5.5.1",
+    "flower>=2.2.0",
+    "kombu~=5.6.0",
     "pillow>=13.0.0",
     "psycopg[binary]>=3.3.6",
-    "redis>=8.1.0",
+    "redis>=6.4,<6.5",
 ]
 
 [dependency-groups]
