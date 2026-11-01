@@ -1,7 +1,7 @@
 from rest_framework import mixins, viewsets
 
+from apps.processing import selectors
 from apps.processing.api.serializers import ProcessingJobSerializer
-from apps.processing.models import ProcessingJob
 
 
 class ProcessingJobViewSet(
@@ -13,9 +13,4 @@ class ProcessingJobViewSet(
     serializer_class = ProcessingJobSerializer
 
     def get_queryset(self):
-        qs = ProcessingJob.objects.select_related("video")
-        user = self.request.user
-        if getattr(user, "is_admin", False):
-            return qs
-        # O usuário vê só os jobs dos próprios vídeos (que não foram apagados).
-        return qs.filter(video__owner=user, video__is_deleted=False)
+        return selectors.job_queryset(user=self.request.user)
