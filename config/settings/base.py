@@ -52,6 +52,9 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Depois do AuthenticationMiddleware de propósito: assim ele consegue registrar o
+    # request.user que um middleware enxerga (AnonymousUser com JWT, laboratório 2).
+    "apps.core.middleware.RequestIdMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -149,8 +152,9 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     # JWT no header "Authorization: Bearer <access>". Por ser a PRIMEIRA classe, quem não
     # mandou credencial recebe 401 com "WWW-Authenticate: Bearer" (e não 403).
+    # ContextJWTAuthentication = JWTAuthentication do simplejwt + user_id no contexto de log.
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.core.authentication.ContextJWTAuthentication",
     ],
     # Fechado por padrão: todo endpoint exige login, e quem é público declara AllowAny.
     # Esquecer a permissão numa view nova não a deixa aberta.
@@ -160,6 +164,29 @@ REST_FRAMEWORK = {
     # Rate do scope "login" (ScopedRateThrottle na view de login). Os demais scopes e o
     # cache no Redis entram na configuração de throttling.
     "DEFAULT_THROTTLE_RATES": {"login": "5/minute"},
+}
+
+# ---------------------------------------------------------------- logging
+# JSON no console (stdout): em container, quem coleta os logs é a plataforma (Docker, k8s),
+# não arquivos. Cada linha leva request_id e user_id (RequestContextFilter).
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "filters": {"request_context": {"()": "apps.core.logs.RequestContextFilter"}},
+    "formatters": {"json": {"()": "apps.core.logs.JsonFormatter"}},
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+            "filters": ["request_context"],
+        }
+    },
+    "root": {"handlers": ["console"], "level": env("LOG_LEVEL", default="INFO")},
+    "loggers": {
+        # O RequestIdMiddleware já registra cada requisição; evita a linha duplicada do Django.
+        "django.request": {"level": "ERROR"},
+        "django.server": {"level": "WARNING"},
+    },
 }
 
 # ---------------------------------------------------------------- JWT (simplejwt)
