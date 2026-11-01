@@ -222,6 +222,14 @@ CELERY_TASK_ROUTES = {"apps.processing.tasks.process_video": {"queue": "processi
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # Com acks_late: se o processo do worker morrer no meio (OOM, kill), a mensagem volta à fila.
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
+# RabbitMQ 4 não aceita mais filas "transient non-exclusive", que o Celery usava por padrão
+# no controle remoto (pidbox: inspect/ping, Flower) e nos eventos. Exclusivas (presas à
+# conexão que as criou) continuam permitidas.
+CELERY_CONTROL_QUEUE_EXCLUSIVE = True
+CELERY_EVENT_QUEUE_EXCLUSIVE = True
+# Se a conexão com o broker cair, cancela as tasks em execução com acks_late: elas não podem
+# mais ser confirmadas e o RabbitMQ já as devolveu à fila (padrão do Celery 6).
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 # Rede de segurança contra task travada: soft (exceção dentro da task) e hard (mata o processo).
 CELERY_TASK_SOFT_TIME_LIMIT = 10 * 60
 CELERY_TASK_TIME_LIMIT = 11 * 60
