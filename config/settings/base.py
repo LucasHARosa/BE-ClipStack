@@ -123,4 +123,6 @@ REST_FRAMEWORK = {
     # Fechado por padrão: todo endpoint exige login, e quem é público declara AllowAny.
     # Esquecer a permissão numa view nova não a deixa aberta.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    # Converte DomainError (lançada pelos services) em resposta HTTP.
+    "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
 }
