@@ -155,6 +155,9 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 |---|---|---|
 | `GET /meta/` | Status, visibilidades e limites de upload para o frontend | público |
 | `POST /auth/register/` | Cadastro | público |
+| `POST /auth/login/` | Login por email e senha → `access` + `refresh` (5 tentativas/min) | público |
+| `POST /auth/refresh/` | Novo `access` e novo `refresh` (rotação; o antigo é invalidado) | público |
+| `POST /auth/logout/` | Invalida o `refresh` (blacklist) | público |
 | `GET/PATCH /users/me/` | Perfil do usuário logado | autenticado |
 | `GET/POST /videos/` | Lista (visíveis para o usuário) e upload (multipart) | autenticado |
 | `GET/PATCH/PUT/DELETE /videos/{id}/` | Detalhe, edição e exclusão (soft delete) | autenticado |
@@ -174,8 +177,33 @@ outro vídeo, inclusive quando as duas chegam ao mesmo tempo.
 **Erros de regra de negócio** saem no formato
 `{"error": {"code": "video_not_reprocessable", "message": "...", "details": {...}}}`.
 
-Em construção: login/refresh/logout com JWT, health check e a matriz completa de permissões (o
-dono edita; o admin vê tudo e modera).
+## Autenticação e permissões
+
+JWT no header `Authorization: Bearer <access>` (access de 15 min; refresh de 7 dias com rotação
+e blacklist). Sem token: `401` com `WWW-Authenticate: Bearer`.
+
+Dois papéis no campo `role` do usuário: `USER` e `ADMIN`. O `ADMIN` também tem `is_staff` (acesso
+ao Django Admin), mantido em sincronia automaticamente. O token traz o `role` como claim só para
+a interface; **o backend sempre autoriza pelo papel gravado no banco**.
+
+| Ação | Dono | Outro usuário | Admin |
+|---|---|---|---|
+| Ver vídeo público e concluído | ✅ | ✅ | ✅ |
+| Ver vídeo privado | ✅ | 404 | ✅ |
+| Editar vídeo | ✅ | 404 ou 403 | 403 |
+| Apagar vídeo | ✅ | 404 ou 403 | ✅ (moderação) |
+| Reprocessar vídeo | ✅ | 404 ou 403 | 403 |
+| Comentar | em vídeo que pode ver | idem | idem |
+| Apagar comentário | autor ✅ | 403 | ✅ (moderação) |
+| Tags | leitura | leitura | leitura e escrita |
+| Jobs de processamento | dos seus vídeos | — | todos |
+| Notificações | só as próprias | só as próprias | só as próprias |
+| Listar usuários / mudar papel | ❌ | ❌ | ✅ |
+
+404 quando o recurso não é visível para quem pede (não revela que existe); 403 quando é visível,
+mas a ação não é permitida.
+
+Em construção: health check assíncrono.
 
 ### Processar jobs sem fila
 
@@ -224,7 +252,7 @@ uv run pytest                     # testes
 - [x] Serializers
 - [x] Views, URLs e routers
 - [x] Services, selectors, exceções de domínio, Idempotency-Key
-- [ ] Autenticação JWT, papéis e permissões
+- [x] Autenticação JWT, papéis e permissões
 - [ ] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
 - [ ] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
 - [ ] Cache de estatísticas e health check assíncrono
