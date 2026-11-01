@@ -182,7 +182,7 @@ uv run pytest                     # testes
 
 - [x] Setup: settings por ambiente, apps por domínio, PostgreSQL no Docker
 - [x] Models, relacionamentos, QuerySets, constraints e Django Admin
-- [ ] Serializers
+- [x] Serializers
 - [ ] Views, URLs e routers
 - [ ] Services, selectors, exceções de domínio, Idempotency-Key
 - [ ] Autenticação JWT, papéis e permissões
