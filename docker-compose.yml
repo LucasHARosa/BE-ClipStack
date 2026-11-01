@@ -1,5 +1,34 @@
-# Infraestrutura local: Postgres, Redis e RabbitMQ.
+# Ambiente local.
+#   Só a infraestrutura (Django rodando no host com uv):  docker compose up -d postgres redis rabbitmq
+#   Infra + workers do Celery, beat e flower:             docker compose up -d
 name: clipstack
+
+# Configuração comum dos serviços que usam a imagem do projeto (âncora YAML).
+x-app: &app
+  build: .
+  # Nome fixo: os serviços abaixo reaproveitam a MESMA imagem em vez de uma por serviço.
+  image: clipstack-api:local
+  env_file: .env
+  environment: &app-env
+    # Dentro da rede do compose, os serviços se acham pelo nome (postgres, redis, rabbitmq).
+    DJANGO_SETTINGS_MODULE: config.settings.prod
+    DJANGO_ALLOWED_HOSTS: "*"
+    DJANGO_SECURE_SSL_REDIRECT: "False"
+    DJANGO_EMAIL_BACKEND: django.core.mail.backends.console.EmailBackend
+    DATABASE_URL: postgres://${POSTGRES_USER:-clipstack}:${POSTGRES_PASSWORD:-clipstack}@postgres:5432/${POSTGRES_DB:-clipstack}
+    REDIS_URL: redis://redis:6379/0
+    CELERY_BROKER_URL: amqp://${RABBITMQ_USER:-clipstack}:${RABBITMQ_PASSWORD:-clipstack}@rabbitmq:5672//
+    CELERY_RESULT_BACKEND: redis://redis:6379/1
+    VIDEO_PROCESSOR_CLASS: apps.processing.processors.FfmpegVideoProcessor
+  volumes:
+    # Mídia COMPARTILHADA: o vídeo é salvo por quem recebe o upload (Django) e lido pelo worker,
+    # que roda em outro container. Sem o mesmo diretório, o worker não acharia o arquivo.
+    # Em produção isso vira um object storage (S3) com django-storages.
+    - ./media:/app/media
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
 
 services:
   postgres:
@@ -48,6 +77,44 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  worker-processing:
+    <<: *app
+    # Só a fila "processing" (vídeos). Poucos processos (-c 2): cada um roda ffmpeg (CPU).
+    command: >
+      celery -A config worker -Q processing -c 2 -n processing@%h --loglevel=INFO
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d processing@$$HOSTNAME --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+
+  worker-default:
+    <<: *app
+    # Só a fila "default" (notificações e emails): tarefas curtas, mais concorrência.
+    command: >
+      celery -A config worker -Q default -c 4 -n default@%h --loglevel=INFO
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A config inspect ping -d default@$$HOSTNAME --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+
+  beat:
+    <<: *app
+    # UMA instância só: duas publicariam cada tarefa periódica em dobro.
+    command: celery -A config beat --loglevel=INFO --schedule /tmp/celerybeat-schedule
+    volumes: []
+
+  flower:
+    <<: *app
+    # Painel do Celery em http://localhost:5555 (workers, tasks, retries, tempos).
+    command: >
+      celery -A config flower --port=5555
+      --broker_api=http://${RABBITMQ_USER:-clipstack}:${RABBITMQ_PASSWORD:-clipstack}@rabbitmq:15672/api/
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    volumes: []
 
 volumes:
   postgres_data:
