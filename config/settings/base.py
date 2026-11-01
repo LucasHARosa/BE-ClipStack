@@ -107,6 +107,15 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
 
+# ---------------------------------------------------------------- upload de vídeos
+# Regras de formato do upload, validadas no serializer e expostas ao frontend em /meta/.
+VIDEO_ALLOWED_EXTENSIONS = env.list(
+    "VIDEO_ALLOWED_EXTENSIONS", default=[".mp4", ".mov", ".webm", ".mkv"]
+)
+VIDEO_MAX_UPLOAD_SIZE_MB = env.int("VIDEO_MAX_UPLOAD_SIZE_MB", default=200)
+# Arquivos acima deste tamanho vão para um arquivo temporário em disco, não para a memória.
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
+
 # ---------------------------------------------------------------- DRF
 # Configuração global do DRF; cada etapa acrescenta (auth, permissões, paginação, throttle...).
 REST_FRAMEWORK = {
