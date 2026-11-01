@@ -158,6 +158,7 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 | `GET/PATCH /users/me/` | Perfil do usuário logado | autenticado |
 | `GET/POST /videos/` | Lista (visíveis para o usuário) e upload (multipart) | autenticado |
 | `GET/PATCH/PUT/DELETE /videos/{id}/` | Detalhe, edição e exclusão (soft delete) | autenticado |
+| `POST /videos/{id}/reprocess/` | Reprocessa um vídeo que falhou (202; 409 se não puder) | autenticado |
 | `GET/POST /videos/{id}/comments/` | Comentários do vídeo | autenticado |
 | `DELETE /videos/{id}/comments/{id}/` | Apagar comentário | autenticado |
 | `GET /tags/` · `POST/PUT/PATCH/DELETE /tags/{id}/` | Tags (escrita só admin) | autenticado / admin |
@@ -166,8 +167,24 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 | `GET /dashboard/stats/` | Vídeos por status, duração total, mais comentados | autenticado |
 | `GET /admin/users/` · `POST /admin/users/{id}/set-role/` | Usuários e troca de papel | admin |
 
-Em construção: login/refresh/logout com JWT, `POST /videos/{id}/reprocess/`, health check e a
-matriz completa de permissões (o dono edita; o admin vê tudo e modera).
+**Idempotency-Key:** `POST /videos/` aceita o header `Idempotency-Key`. Repetir a requisição
+com a mesma chave devolve a resposta original (com `Idempotent-Replayed: true`) em vez de criar
+outro vídeo, inclusive quando as duas chegam ao mesmo tempo.
+
+**Erros de regra de negócio** saem no formato
+`{"error": {"code": "video_not_reprocessable", "message": "...", "details": {...}}}`.
+
+Em construção: login/refresh/logout com JWT, health check e a matriz completa de permissões (o
+dono edita; o admin vê tudo e modera).
+
+### Processar jobs sem fila
+
+Enquanto os workers não estão rodando, um management command processa os jobs na hora:
+
+```bash
+uv run python manage.py process_job --queued        # todos os jobs na fila
+uv run python manage.py process_job 12 --processor apps.processing.processors.FfmpegVideoProcessor
+```
 
 ## Como rodar
 
@@ -206,7 +223,7 @@ uv run pytest                     # testes
 - [x] Models, relacionamentos, QuerySets, constraints e Django Admin
 - [x] Serializers
 - [x] Views, URLs e routers
-- [ ] Services, selectors, exceções de domínio, Idempotency-Key
+- [x] Services, selectors, exceções de domínio, Idempotency-Key
 - [ ] Autenticação JWT, papéis e permissões
 - [ ] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
 - [ ] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
