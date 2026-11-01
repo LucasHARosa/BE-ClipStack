@@ -2,15 +2,28 @@ from django.db.models import Count
 from rest_framework import generics, mixins, permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.accounts import services
 from apps.accounts.api.serializers import (
     AdminUserSerializer,
+    LoginSerializer,
     MeSerializer,
     RegisterSerializer,
     SetRoleSerializer,
 )
 from apps.accounts.models import User
+from apps.core.permissions import IsAdminRole
+
+
+class LoginView(TokenObtainPairView):
+    # View do simplejwt com serializer próprio (claims extras) e throttle próprio:
+    # throttle_classes substitui (não soma) os throttles padrão; o scope "login" limita
+    # tentativas de senha por IP, contra força bruta.
+    serializer_class = LoginSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
 
 
 class RegisterView(generics.CreateAPIView):
@@ -36,9 +49,7 @@ class AdminUserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
     # GenericViewSet + mixins: recurso com CRUD PARCIAL (só listar e ver). Criar usuário é
     # o cadastro; apagar não existe (usuário é desativado).
     serializer_class = AdminUserSerializer
-    # IsAdminUser (nativo do DRF) checa is_staff, que já é sincronizado com o role.
-    # A etapa 6 troca por IsAdminRole, que lê o role diretamente.
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminRole]
 
     def get_queryset(self):
         # annotate: videos_count calculado no mesmo SELECT (reverso "videos").

@@ -1,8 +1,22 @@
 from django.contrib.auth import password_validation
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from apps.accounts.models import User
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    # Login por email (USERNAME_FIELD) + senha → {"access", "refresh"}.
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Claims extras: SÓ para o frontend decidir o que mostrar (menu admin, botões). O
+        # token não é criptografado (qualquer um lê o payload), e o backend NUNCA autoriza
+        # pelo claim: as permissões leem request.user.role, que vem do banco a cada requisição.
+        token["role"] = user.role
+        token["username"] = user.username
+        return token
 
 
 class RegisterSerializer(serializers.ModelSerializer):
