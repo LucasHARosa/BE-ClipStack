@@ -139,6 +139,8 @@ class TagViewSet(viewsets.ModelViewSet):
     # ModelViewSet: CRUD completo de tags; a leitura é para todos, a escrita só para admin.
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
+    # Lista curta, usada inteira pelo frontend (filtro e formulário de upload): sem paginação.
+    pagination_class = None
 
     def get_permissions(self):
         # get_permissions(): permissões diferentes por ação.

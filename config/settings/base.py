@@ -175,6 +175,14 @@ REST_FRAMEWORK = {
     # Fechado por padrão: todo endpoint exige login, e quem é público declara AllowAny.
     # Esquecer a permissão numa view nova não a deixa aberta.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
+    # Filtros (django-filter), busca (?search=) e ordenação (?ordering=). Cada view declara
+    # o que aceita (filterset_class, search_fields, ordering_fields); sem isso, não fazem nada.
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ],
     # Converte DomainError (lançada pelos services) em resposta HTTP.
     "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
     # Throttling: contadores no cache (Redis). Anônimo por IP; logado por id do usuário.
