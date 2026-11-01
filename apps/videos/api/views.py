@@ -18,6 +18,7 @@ from apps.videos.api.serializers import (
     VideoUpdateSerializer,
     VideoUploadSerializer,
 )
+from apps.videos.filters import VideoFilter
 from apps.videos.models import Tag, Video
 
 # --------------------------------------------------------------------------- FBV
@@ -56,6 +57,14 @@ class VideoViewSet(viewsets.ModelViewSet):
     # ModelViewSet: recurso com CRUD COMPLETO (list, create, retrieve, update, destroy)
     # + @action reprocess. multipart para o upload do arquivo; JSON para o PATCH.
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    # ?status=&tag=&visibility=&created_after=&created_before=&mine=true (django-filter)
+    filterset_class = VideoFilter
+    # ?search=texto → title ILIKE '%texto%' (SearchFilter)
+    search_fields = ["title"]
+    # ?ordering=-created_at | title (OrderingFilter). Sem a lista, o cliente poderia ordenar
+    # por qualquer campo, inclusive sem índice.
+    ordering_fields = ["created_at", "title"]
+    ordering = ["-created_at"]
 
     def get_queryset(self):
         # get_queryset() decide o que cada usuário PODE VER. Fora dele → 404 em qualquer ação

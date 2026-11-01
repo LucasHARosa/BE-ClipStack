@@ -11,6 +11,9 @@ class ProcessingJobViewSet(
     # worker. Equivale ao ReadOnlyModelViewSet do DRF; os mixins explícitos deixam claro o que
     # o recurso oferece.
     serializer_class = ProcessingJobSerializer
+    # Filtro simples por igualdade, sem FilterSet: ?status=failed&video=12
+    filterset_fields = ["status", "video"]
+    ordering_fields = ["created_at"]
 
     def get_queryset(self):
         return selectors.job_queryset(user=self.request.user)
