@@ -119,7 +119,33 @@ Cada app segue a mesma divisão:
 | `admin.py` | Django Admin |
 
 Fronteiras entre apps: `videos` não importa `processing` nem `notifications`. As duas podem
-importar `videos`, e a comunicação entre apps passa pelos services.
+importar `videos`, e a comunicação entre apps passa pelos services. Os contratos ficam no
+`pyproject.toml` e são verificados com `lint-imports`:
+
+```
+core  ←  accounts  ←  videos  ←  processing
+                            ↖  notifications
+```
+
+### Modelo de dados
+
+```mermaid
+erDiagram
+    User ||--o{ Video : "owner (PROTECT)"
+    User ||--o{ Comment : "author"
+    User ||--o{ Notification : "user"
+    User ||--o{ IdempotencyKey : "user"
+    Video ||--o| VideoMetadata : "1:1"
+    Video ||--o{ Comment : "comments"
+    Video }o--o{ Tag : "tags"
+    Video ||--o{ ProcessingJob : "jobs (tentativas)"
+    Video |o--o{ Notification : "video (SET_NULL)"
+```
+
+Garantias no banco: email e nome de tag únicos, **no máximo um job ativo por vídeo** (índice
+único parcial), progresso entre 0 e 100 (check constraint) e `Idempotency-Key` única por
+usuário. O vídeo usa soft delete (`is_deleted`), e as tags iniciais são criadas por uma data
+migration.
 
 ## Como rodar
 
@@ -147,13 +173,15 @@ uv run python manage.py runserver
 ```bash
 uv run ruff check .               # lint
 uv run ruff format .              # formatação
+uv run lint-imports               # fronteiras entre apps
+uv run python manage.py makemigrations --check   # nenhuma migration pendente
 uv run pytest                     # testes
 ```
 
 ## Roadmap
 
 - [x] Setup: settings por ambiente, apps por domínio, PostgreSQL no Docker
-- [ ] Models, relacionamentos, QuerySets, constraints e Django Admin
+- [x] Models, relacionamentos, QuerySets, constraints e Django Admin
 - [ ] Serializers
 - [ ] Views, URLs e routers
 - [ ] Services, selectors, exceções de domínio, Idempotency-Key
