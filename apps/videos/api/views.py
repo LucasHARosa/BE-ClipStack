@@ -1,11 +1,12 @@
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, permissions, status, viewsets
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.idempotency import run_idempotent
 from apps.videos import selectors, services
 from apps.videos.api.serializers import (
     CommentSerializer,
@@ -54,9 +55,8 @@ class DashboardStatsView(APIView):
 
 
 class VideoViewSet(viewsets.ModelViewSet):
-    # ModelViewSet: recurso com CRUD COMPLETO (list, create, retrieve, update, destroy).
-    # A action reprocess (POST /videos/{id}/reprocess/) entra na etapa 5 com o service.
-    # multipart para o upload do arquivo; JSON para o PATCH.
+    # ModelViewSet: recurso com CRUD COMPLETO (list, create, retrieve, update, destroy)
+    # + @action reprocess. multipart para o upload do arquivo; JSON para o PATCH.
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -79,8 +79,13 @@ class VideoViewSet(viewsets.ModelViewSet):
         return VideoDetailSerializer
 
     def create(self, request, *args, **kwargs):
-        # create() sobrescrito: o serializer só valida; quem cria é o service. A resposta usa
-        # o serializer de SAÍDA (detalhe), não o de entrada.
+        # Com o header Idempotency-Key, repetir o POST devolve a resposta original em vez de
+        # criar outro vídeo (retry depois de timeout, clique duplo).
+        return run_idempotent(request, lambda: self._create_video(request))
+
+    def _create_video(self, request):
+        # O serializer só valida; quem cria é o service. A resposta usa o serializer de
+        # SAÍDA (detalhe), não o de entrada.
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         video = services.create_video(owner=request.user, **serializer.validated_data)
@@ -100,6 +105,17 @@ class VideoViewSet(viewsets.ModelViewSet):
         # perform_destroy(): gancho do DestroyModelMixin. Troca o DELETE do banco pelo soft
         # delete do service; a resposta continua 204.
         services.delete_video(video=instance, actor=self.request.user)
+
+    # @action(detail=True): POST /videos/{id}/reprocess/. A view só orquestra: get_object()
+    # (visibilidade → 404), service (regra + lock → 409 se não puder) e resposta.
+    @action(detail=True, methods=["post"])
+    def reprocess(self, request, pk=None):
+        video = self.get_object()
+        services.reprocess_video(video_id=video.pk)
+        video = self.get_queryset().get(pk=video.pk)
+        output = VideoDetailSerializer(video, context=self.get_serializer_context())
+        # 202 Accepted: o pedido foi aceito, mas o trabalho acontece depois, na fila.
+        return Response(output.data, status=status.HTTP_202_ACCEPTED)
 
 
 class TagViewSet(viewsets.ModelViewSet):
