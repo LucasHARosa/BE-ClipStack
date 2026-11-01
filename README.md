@@ -147,6 +147,28 @@ Garantias no banco: email e nome de tag únicos, **no máximo um job ativo por v
 usuário. O vídeo usa soft delete (`is_deleted`), e as tags iniciais são criadas por uma data
 migration.
 
+## Endpoints
+
+Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
+
+| Método e rota | Descrição | Acesso |
+|---|---|---|
+| `GET /meta/` | Status, visibilidades e limites de upload para o frontend | público |
+| `POST /auth/register/` | Cadastro | público |
+| `GET/PATCH /users/me/` | Perfil do usuário logado | autenticado |
+| `GET/POST /videos/` | Lista (visíveis para o usuário) e upload (multipart) | autenticado |
+| `GET/PATCH/PUT/DELETE /videos/{id}/` | Detalhe, edição e exclusão (soft delete) | autenticado |
+| `GET/POST /videos/{id}/comments/` | Comentários do vídeo | autenticado |
+| `DELETE /videos/{id}/comments/{id}/` | Apagar comentário | autenticado |
+| `GET /tags/` · `POST/PUT/PATCH/DELETE /tags/{id}/` | Tags (escrita só admin) | autenticado / admin |
+| `GET /jobs/` · `GET /jobs/{id}/` | Jobs de processamento dos próprios vídeos | autenticado |
+| `GET /notifications/` · `POST /notifications/mark-all-read/` | Notificações | autenticado |
+| `GET /dashboard/stats/` | Vídeos por status, duração total, mais comentados | autenticado |
+| `GET /admin/users/` · `POST /admin/users/{id}/set-role/` | Usuários e troca de papel | admin |
+
+Em construção: login/refresh/logout com JWT, `POST /videos/{id}/reprocess/`, health check e a
+matriz completa de permissões (o dono edita; o admin vê tudo e modera).
+
 ## Como rodar
 
 ### Pré-requisitos
@@ -183,7 +205,7 @@ uv run pytest                     # testes
 - [x] Setup: settings por ambiente, apps por domínio, PostgreSQL no Docker
 - [x] Models, relacionamentos, QuerySets, constraints e Django Admin
 - [x] Serializers
-- [ ] Views, URLs e routers
+- [x] Views, URLs e routers
 - [ ] Services, selectors, exceções de domínio, Idempotency-Key
 - [ ] Autenticação JWT, papéis e permissões
 - [ ] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
