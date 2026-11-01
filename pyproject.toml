@@ -1,0 +1,44 @@
+[project]
+name = "clipstack-api"
+version = "0.1.0"
+description = "API de upload e processamento assíncrono de vídeos com Django, DRF e Celery"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "django~=5.2",
+    "django-environ>=0.14.0",
+    "djangorestframework>=3.18.3",
+    "psycopg[binary]>=3.3.6",
+]
+
+[dependency-groups]
+dev = [
+    "django-debug-toolbar>=8.0.0",
+    "pytest>=9.2.0",
+    "pytest-django>=4.14.0",
+    "ruff>=0.17.3",
+]
+
+# ---------------------------------------------------------------- ruff (lint + format)
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+extend-exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+# E/W: pycodestyle | F: pyflakes | I: isort | B: bugbear | UP: pyupgrade
+# DJ: regras específicas de Django | S: segurança (bandit) | SIM: simplificações
+select = ["E", "W", "F", "I", "B", "UP", "DJ", "S", "SIM"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert é a forma idiomática de verificar no pytest
+"**/tests/**" = ["S101", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+addopts = "--reuse-db -ra"
