@@ -4,6 +4,7 @@ Configuração que muda entre ambientes (segredos, URLs de serviços) vem de var
 ambiente (12-factor app), lidas com django-environ a partir do processo ou do arquivo .env.
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -29,6 +30,8 @@ DJANGO_APPS = [
 ]
 THIRD_PARTY_APPS = [
     "rest_framework",
+    # Tabelas OutstandingToken/BlacklistedToken: logout e rotação de refresh tokens.
+    "rest_framework_simplejwt.token_blacklist",
 ]
 # Apps do projeto: uma por domínio (bounded context), não uma por camada.
 LOCAL_APPS = [
@@ -132,9 +135,31 @@ VIDEO_PROCESSING_ENTRYPOINT = "apps.processing.services.start_processing"
 # Configuração global do DRF; cada etapa acrescenta (auth, permissões, paginação, throttle...).
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    # JWT no header "Authorization: Bearer <access>". Por ser a PRIMEIRA classe, quem não
+    # mandou credencial recebe 401 com "WWW-Authenticate: Bearer" (e não 403).
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
     # Fechado por padrão: todo endpoint exige login, e quem é público declara AllowAny.
     # Esquecer a permissão numa view nova não a deixa aberta.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     # Converte DomainError (lançada pelos services) em resposta HTTP.
     "EXCEPTION_HANDLER": "apps.core.exception_handler.api_exception_handler",
+    # Rate do scope "login" (ScopedRateThrottle na view de login). Os demais scopes e o
+    # cache no Redis entram na configuração de throttling.
+    "DEFAULT_THROTTLE_RATES": {"login": "5/minute"},
+}
+
+# ---------------------------------------------------------------- JWT (simplejwt)
+SIMPLE_JWT = {
+    # Access curto: vai em toda requisição; se vazar, expira logo. Não dá para revogar.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=env.int("JWT_ACCESS_MINUTES", default=15)),
+    # Refresh longo: só serve para pedir novos access; pode ser revogado (blacklist).
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=env.int("JWT_REFRESH_DAYS", default=7)),
+    # Rotação: cada /refresh/ devolve um refresh NOVO e põe o antigo na blacklist. Um refresh
+    # roubado para de funcionar assim que o dono legítimo usa o dele.
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
 }

@@ -6,10 +6,15 @@ from .base import INSTALLED_APPS, MIDDLEWARE, REST_FRAMEWORK, env
 DEBUG = True
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 
-# Em dev, o API Browsable do DRF ajuda a explorar os endpoints pelo navegador.
+# Em dev, o API Browsable do DRF ajuda a explorar os endpoints pelo navegador. Ele usa sessão
+# (login em /api-auth/), por isso a SessionAuthentication entra só aqui, DEPOIS do JWT.
 REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [
     "rest_framework.renderers.JSONRenderer",
     "rest_framework.renderers.BrowsableAPIRenderer",
+]
+REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"] = [
+    *REST_FRAMEWORK["DEFAULT_AUTHENTICATION_CLASSES"],
+    "rest_framework.authentication.SessionAuthentication",
 ]
 
 # django-debug-toolbar: mostra queries SQL, tempo e cache de cada página. Só em dev.
