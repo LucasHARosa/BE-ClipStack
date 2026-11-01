@@ -34,6 +34,11 @@ class ModerationAdminMixin:
             self.moderator_can_delete and self._is_moderator(request)
         )
 
+    # Permissão customizada "moderate": usada pelas admin actions declaradas com
+    # @admin.action(permissions=["moderate"]). O Django procura has_<nome>_permission().
+    def has_moderate_permission(self, request):
+        return request.user.is_superuser or self._is_moderator(request)
+
 
 # Sem o mixin: só o superuser vê (staff sem permissões do auth não acessa). É ferramenta
 # de diagnóstico, não de moderação.

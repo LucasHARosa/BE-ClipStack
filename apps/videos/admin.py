@@ -3,6 +3,7 @@ from django.db.models import Count
 
 from apps.core.admin import ModerationAdminMixin
 
+from . import services
 from .models import Comment, Tag, Video, VideoMetadata
 
 
@@ -32,6 +33,15 @@ class VideoAdmin(ModerationAdminMixin, admin.ModelAdmin):
     date_hierarchy = "created_at"
     # O inline de jobs é adicionado pela app processing (apps/processing/admin.py).
     inlines = [VideoMetadataInline]
+    actions = ["hide_videos"]
+
+    # Admin action: moderação em lote. Passa pelo MESMO service da API (soft delete), em vez
+    # do "delete_selected" padrão, que apagaria a linha do banco.
+    @admin.action(description="Ocultar vídeos selecionados (moderação)", permissions=["moderate"])
+    def hide_videos(self, request, queryset):
+        for video in queryset.filter(is_deleted=False):
+            services.delete_video(video=video, actor=request.user)
+        self.message_user(request, "Vídeos ocultados.")
 
     def get_queryset(self, request):
         # annotate: COUNT dos comentários no mesmo SELECT (reverso "comments" do Comment).
