@@ -116,6 +116,18 @@ VIDEO_MAX_UPLOAD_SIZE_MB = env.int("VIDEO_MAX_UPLOAD_SIZE_MB", default=200)
 # Arquivos acima deste tamanho vão para um arquivo temporário em disco, não para a memória.
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 
+# ---------------------------------------------------------------- processamento de vídeos
+# DI por configuração: a implementação do processador é escolhida aqui (import_string).
+# Fake em dev/testes; apps.processing.processors.FfmpegVideoProcessor quando há ffmpeg.
+VIDEO_PROCESSOR_CLASS = env(
+    "VIDEO_PROCESSOR_CLASS", default="apps.processing.processors.FakeVideoProcessor"
+)
+FAKE_PROCESSOR_STEP_SECONDS = env.float("FAKE_PROCESSOR_STEP_SECONDS", default=1.0)
+# Inversão de dependência entre apps: videos precisa INICIAR o processamento, mas não pode
+# importar processing (fronteira do import-linter). Então videos chama "a função configurada
+# aqui", e é o settings (composition root) que liga as duas apps.
+VIDEO_PROCESSING_ENTRYPOINT = "apps.processing.services.start_processing"
+
 # ---------------------------------------------------------------- DRF
 # Configuração global do DRF; cada etapa acrescenta (auth, permissões, paginação, throttle...).
 REST_FRAMEWORK = {
