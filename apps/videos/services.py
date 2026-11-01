@@ -7,9 +7,10 @@ em vez de mexer nos models diretamente.
 
 import logging
 
+from django.core.files.base import ContentFile
 from django.db import transaction
 
-from apps.videos.models import Video
+from apps.videos.models import Video, VideoMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,26 @@ def update_video(*, video, data):
         if tags is not None:
             video.tags.set(tags)
     return video
+
+
+def set_video_status(*, video, status):
+    # Porta de entrada para OUTRAS apps mudarem o status (processing chama isto, em vez de
+    # fazer video.status = ... direto no model de outra app).
+    video.status = status
+    video.save(update_fields=["status", "updated_at"])
+
+
+def save_video_metadata(*, video, duration_seconds, resolution, thumbnail=None):
+    # update_or_create: idempotente. Reprocessar sobrescreve os metadados em vez de falhar
+    # na unicidade do OneToOne.
+    metadata, _ = VideoMetadata.objects.update_or_create(
+        video=video,
+        defaults={"duration_seconds": duration_seconds, "resolution": resolution},
+    )
+    if thumbnail:
+        # save=True grava o arquivo no storage e o caminho na coluna thumbnail.
+        metadata.thumbnail.save(f"{video.pk}.jpg", ContentFile(thumbnail), save=True)
+    return metadata
 
 
 def delete_video(*, video, actor):
