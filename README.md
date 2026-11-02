@@ -153,6 +153,7 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 
 | Método e rota | Descrição | Acesso |
 |---|---|---|
+| `GET /health/` | Banco, Redis e RabbitMQ verificados em paralelo (200 ou 503) | público |
 | `GET /meta/` | Status, visibilidades e limites de upload para o frontend | público |
 | `POST /auth/register/` | Cadastro | público |
 | `POST /auth/login/` | Login por email e senha → `access` + `refresh` (5 tentativas/min) | público |
@@ -167,7 +168,7 @@ Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
 | `GET /tags/` · `POST/PUT/PATCH/DELETE /tags/{id}/` | Tags (escrita só admin) | autenticado / admin |
 | `GET /jobs/` · `GET /jobs/{id}/` | Jobs de processamento dos próprios vídeos | autenticado |
 | `GET /notifications/` · `POST /notifications/mark-all-read/` | Notificações | autenticado |
-| `GET /dashboard/stats/` | Vídeos por status, duração total, mais comentados | autenticado |
+| `GET /dashboard/stats/` | Vídeos por status, duração total, mais comentados (cache de 5 min no Redis, invalidado a cada mudança) | autenticado |
 | `GET /admin/users/` · `POST /admin/users/{id}/set-role/` | Usuários e troca de papel | admin |
 
 **Idempotency-Key:** `POST /videos/` aceita o header `Idempotency-Key`. Repetir a requisição
@@ -244,8 +245,6 @@ a interface; **o backend sempre autoriza pelo papel gravado no banco**.
 404 quando o recurso não é visível para quem pede (não revela que existe); 403 quando é visível,
 mas a ação não é permitida.
 
-Em construção: health check assíncrono.
-
 ### Processar jobs sem fila
 
 Enquanto os workers não estão rodando, um management command processa os jobs na hora:
@@ -320,6 +319,6 @@ uv run pytest                     # testes
 - [x] Autenticação JWT, papéis e permissões
 - [x] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
 - [x] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
-- [ ] Cache de estatísticas e health check assíncrono
+- [x] Cache de estatísticas e health check assíncrono
 - [ ] Testes automatizados
 - [ ] CI, OpenAPI e compose completo com Gunicorn e workers
