@@ -266,15 +266,39 @@ uv run python manage.py process_job 12 --processor apps.processing.processors.Ff
 
 ```bash
 cp .env.example .env              # e troque o DJANGO_SECRET_KEY
-docker compose up -d --wait       # sobe a infraestrutura
+docker compose up -d --wait       # Postgres, Redis, RabbitMQ, workers do Celery, beat e flower
 uv sync                           # cria o .venv e instala as dependências
 uv run python manage.py migrate
 uv run python manage.py createsuperuser
 uv run python manage.py runserver
 ```
 
-- API: <http://localhost:8000/api/v1/>
-- Django Admin: <http://localhost:8000/admin/>
+Os workers do Celery rodam no Docker (o pool *prefork* do Celery não funciona no Windows) e
+leem os vídeos da pasta `./media`, a mesma em que o Django local grava os uploads. Para subir
+só a infraestrutura: `docker compose up -d postgres redis rabbitmq` (e processe os jobs com
+`manage.py process_job --queued`).
+
+| Serviço | Endereço |
+|---|---|
+| API | <http://localhost:8000/api/v1/> |
+| Django Admin | <http://localhost:8000/admin/> |
+| RabbitMQ (management) | <http://localhost:15672> (clipstack / clipstack) |
+| Flower (Celery) | <http://localhost:5555> |
+
+### Filas
+
+| Fila | Worker | Tasks | Por quê |
+|---|---|---|---|
+| `processing` | `worker-processing` (`-c 2`, prefetch 1) | `process_video` | Pesada (ffmpeg): poucos processos, uma mensagem por vez |
+| `default` | `worker-default` (`-c 4`) | notificação, email, tarefas do Beat | Leve e urgente: não espera atrás dos vídeos |
+
+Tasks com `acks_late` (um worker que morre devolve a mensagem à fila) e idempotentes (rodar duas
+vezes não duplica nada). Falhas temporárias são retentadas com backoff exponencial e jitter; o
+Celery Beat marca como falhos os jobs presos em processamento.
+
+```bash
+docker compose logs -f worker-processing worker-default   # acompanhar as tasks e os emails (console)
+```
 
 ### Qualidade
 
@@ -295,7 +319,7 @@ uv run pytest                     # testes
 - [x] Services, selectors, exceções de domínio, Idempotency-Key
 - [x] Autenticação JWT, papéis e permissões
 - [x] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
-- [ ] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
+- [x] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
 - [ ] Cache de estatísticas e health check assíncrono
 - [ ] Testes automatizados
 - [ ] CI, OpenAPI e compose completo com Gunicorn e workers
