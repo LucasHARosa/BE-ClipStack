@@ -15,6 +15,8 @@ class TagFactory(factory.django.DjangoModelFactory):
 class VideoFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = Video
+        # O hook de tags só mexe no M2M; não precisa salvar o vídeo de novo.
+        skip_postgeneration_save = True
 
     # SubFactory: cria o dono junto (ou use VideoFactory(owner=alguem)).
     owner = factory.SubFactory(UserFactory)
