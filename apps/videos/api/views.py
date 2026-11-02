@@ -62,8 +62,8 @@ class VideoViewSet(viewsets.ModelViewSet):
         return selectors.visible_videos(user=self.request.user, with_jobs=self.action != "list")
 
     def get_permissions(self):
-        # Editar e reprocessar: só o dono. Apagar: o dono ou o admin (moderação).
-        if self.action in {"update", "partial_update", "reprocess"}:
+        # Editar: só o dono. Apagar: o dono ou o admin (moderação).
+        if self.action in {"update", "partial_update"}:
             return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
         if self.action == "destroy":
             return [permissions.IsAuthenticated(), (IsOwnerOrReadOnly | IsAdminRole)()]
@@ -122,7 +122,11 @@ class VideoViewSet(viewsets.ModelViewSet):
         services.delete_video(video=instance, actor=self.request.user)
 
     @extend_schema(request=None, responses={202: VideoDetailSerializer})
-    @action(detail=True, methods=["post"])
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated, IsOwnerOrReadOnly],
+    )
     def reprocess(self, request, pk=None):
         video = self.get_object()
         services.reprocess_video(video_id=video.pk)

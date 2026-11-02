@@ -45,12 +45,7 @@ class AdminUserViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewset
     def get_queryset(self):
         return User.objects.annotate(videos_count=Count("videos")).order_by("email")
 
-    def get_serializer_class(self):
-        if self.action == "set_role":
-            return SetRoleSerializer
-        return super().get_serializer_class()
-
-    @action(detail=True, methods=["post"], url_path="set-role")
+    @action(detail=True, methods=["post"], url_path="set-role", serializer_class=SetRoleSerializer)
     def set_role(self, request, pk=None):
         user = self.get_object()
         serializer = self.get_serializer(data=request.data)
