@@ -10,7 +10,6 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture
 def catalog(user, other_user):
-    # Um cenário pequeno, nomeado, reutilizado pelos testes do QuerySet.
     return {
         "alice_public": VideoFactory(owner=user, title="alice público"),
         "alice_private": VideoFactory(owner=user, title="alice privado", visibility="private"),
@@ -58,7 +57,6 @@ class TestVideoMethods:
         ],
     )
     def test_can_be_reprocessed(self, status, is_deleted, expected):
-        # parametrize: o mesmo teste roda uma vez para cada linha da tabela.
         video = VideoFactory.build(status=status, is_deleted=is_deleted)
         assert video.can_be_reprocessed() is expected
 

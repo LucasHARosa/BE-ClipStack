@@ -1,9 +1,3 @@
-"""Testes dos services de vídeo, sem HTTP.
-
-O entrypoint de processamento é trocado por um FAKE via settings (a mesma DI por configuração
-que a produção usa): os testes da app videos não dependem da app processing.
-"""
-
 from unittest import mock
 
 import pytest
@@ -54,7 +48,6 @@ def test_create_video_rolls_back_if_processing_fails(user):
         pytest.raises(RuntimeError),
     ):
         services.create_video(owner=user, file=SimpleUploadedFile("a.mp4", b"0"), title="X")
-    # atomic: vídeo e tags não ficam pela metade.
     assert not Video.objects.filter(title="X").exists()
 
 

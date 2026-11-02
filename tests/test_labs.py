@@ -1,5 +1,3 @@
-"""Laboratórios práticos (roteiros em docs/laboratorios.md)."""
-
 import logging
 from unittest import mock
 

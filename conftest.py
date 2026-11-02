@@ -1,9 +1,3 @@
-"""Fixtures globais dos testes (o pytest carrega este arquivo sozinho, sem import).
-
-Fixture = função que prepara algo para o teste; o pytest a injeta pelo NOME do parâmetro:
-def test_x(auth_client, user): ...
-"""
-
 import pytest
 from django.core.cache import cache
 from rest_framework.test import APIClient
@@ -14,8 +8,6 @@ from apps.accounts.tests.factories import AdminFactory, UserFactory
 
 @pytest.fixture(autouse=True)
 def _media_root(settings, tmp_path):
-    # autouse: vale para TODOS os testes. Uploads e thumbnails vão para uma pasta temporária
-    # (tmp_path é uma fixture nativa do pytest, apagada depois).
     settings.MEDIA_ROOT = tmp_path / "media"
 
 
@@ -43,9 +35,7 @@ def other_user(db):
     return UserFactory(username="bob", email="bob@example.com")
 
 
-# Os nomes admin_user e admin_client existem no pytest-django (superuser + Client do Django).
-# Aqui eles são SOBRESCRITOS: um usuário com role ADMIN (não superuser) e um APIClient com JWT,
-# que é o que a API usa.
+# Sobrescreve as fixtures do pytest-django: role ADMIN (não superuser) e APIClient com JWT.
 @pytest.fixture
 def admin_user(db):
     return AdminFactory(username="moderador", email="mod@example.com")
@@ -76,5 +66,4 @@ def admin_client(admin_user):
 
 @pytest.fixture
 def client_for():
-    # Fixture "fábrica": devolve uma função. Útil quando o teste precisa de vários clientes.
     return _jwt_client

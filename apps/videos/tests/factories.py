@@ -18,18 +18,15 @@ class VideoFactory(factory.django.DjangoModelFactory):
         # O hook de tags só mexe no M2M; não precisa salvar o vídeo de novo.
         skip_postgeneration_save = True
 
-    # SubFactory: cria o dono junto (ou use VideoFactory(owner=alguem)).
     owner = factory.SubFactory(UserFactory)
     title = factory.Sequence(lambda n: f"Vídeo {n}")
     description = ""
-    # Arquivo de verdade no storage (MEDIA_ROOT temporário dos testes).
     file = factory.django.FileField(filename="clip.mp4", data=b"0" * 2048)
     status = Video.Status.COMPLETED
     visibility = Video.Visibility.PUBLIC
 
     @factory.post_generation
     def tags(self, create, extracted, **kwargs):
-        # VideoFactory(tags=[tag1, tag2]) → define o ManyToMany depois de salvar.
         if create and extracted:
             self.tags.set(extracted)
 

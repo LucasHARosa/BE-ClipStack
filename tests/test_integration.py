@@ -1,9 +1,3 @@
-"""Integração: upload pela API → job → task → completed → notificação → email.
-
-Camadas reais (API, services, task, banco). Só a FRONTEIRA com o broker é substituída: o
-.delay() de cada task executa a task na hora, em vez de publicar no RabbitMQ.
-"""
-
 from unittest import mock
 
 import pytest
@@ -35,8 +29,6 @@ def run_tasks_inline():
 def test_upload_to_completed_with_notification_and_email(
     auth_client, user, mailoutbox, run_tasks_inline, django_capture_on_commit_callbacks
 ):
-    # execute=True: os on_commit rodam ao sair do bloco, inclusive os registrados DURANTE a
-    # execução dos anteriores (enqueue → task → notificação → email).
     with django_capture_on_commit_callbacks(execute=True):
         response = auth_client.post(
             reverse("video-list"),

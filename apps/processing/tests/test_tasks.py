@@ -1,9 +1,3 @@
-"""Testes da task process_video rodando DIRETAMENTE (sem broker, sem worker).
-
-process_video(job_id) executa a função na hora. process_video.apply(args=...) executa no modo
-"eager" e simula os retries (o self.retry() reexecuta a task de forma síncrona, sem countdown).
-"""
-
 from unittest import mock
 
 import pytest

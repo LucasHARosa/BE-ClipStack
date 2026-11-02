@@ -12,7 +12,6 @@ from apps.processing.processors import (
 
 
 def test_di_by_settings_picks_the_class(settings):
-    # override pela fixture "settings" do pytest-django: vale só neste teste.
     settings.VIDEO_PROCESSOR_CLASS = "apps.processing.processors.FfmpegVideoProcessor"
     assert isinstance(get_video_processor(), FfmpegVideoProcessor)
 

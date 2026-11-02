@@ -44,7 +44,6 @@ class TestNotifyVideoProcessed:
 
 class TestEmail:
     def test_sends_once_using_mailoutbox(self, user, mailoutbox):
-        # mailoutbox: fixture do pytest-django com os emails "enviados" (backend em memória).
         notification = NotificationFactory(user=user, message="Seu vídeo está pronto.")
 
         tasks.send_notification_email(notification.pk)
