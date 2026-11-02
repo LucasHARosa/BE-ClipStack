@@ -16,4 +16,4 @@ class ProcessingJobViewSet(
         # Na geração do OpenAPI o usuário é anônimo.
         if getattr(self, "swagger_fake_view", False):
             return ProcessingJob.objects.none()
-        return selectors.job_queryset(user=self.request.user)
+        return selectors.visible_jobs(user=self.request.user)

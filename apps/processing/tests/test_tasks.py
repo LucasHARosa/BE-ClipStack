@@ -104,4 +104,4 @@ def test_permanent_error_fails_without_retry(scripted):
 
 
 def test_backoff_is_capped():
-    assert tasks.backoff_seconds(20) <= tasks.BACKOFF_MAX_SECONDS + tasks.BACKOFF_BASE_SECONDS
+    assert tasks.retry_delay_seconds(20) <= tasks.BACKOFF_MAX_SECONDS + tasks.BACKOFF_BASE_SECONDS

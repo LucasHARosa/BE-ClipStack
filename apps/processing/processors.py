@@ -40,7 +40,7 @@ class FakeVideoProcessor(BaseVideoProcessor):
         return ProcessingResult(
             duration_seconds=max(1, size // 100_000),
             resolution="1280x720",
-            thumbnail=_placeholder_thumbnail(Path(file_path).stem),
+            thumbnail=_build_placeholder_thumbnail(Path(file_path).stem),
         )
 
 
@@ -52,7 +52,7 @@ class FfmpegVideoProcessor(BaseVideoProcessor):
             # Temporário: outro worker pode ter o binário.
             raise TransientProcessingError("ffmpeg/ffprobe não encontrados no PATH.")
         on_progress(10)
-        probe = self._run(
+        probe = self._run_command(
             [
                 "ffprobe",
                 "-v",
@@ -74,7 +74,7 @@ class FfmpegVideoProcessor(BaseVideoProcessor):
         duration = float(info.get("format", {}).get("duration") or 0)
         on_progress(50)
         at = min(3.0, duration * 0.1)
-        thumbnail = self._run(
+        thumbnail = self._run_command(
             [
                 "ffmpeg",
                 "-v",
@@ -102,7 +102,7 @@ class FfmpegVideoProcessor(BaseVideoProcessor):
             thumbnail=thumbnail or None,
         )
 
-    def _run(self, args, binary=False):
+    def _run_command(self, args, binary=False):
         try:
             result = subprocess.run(  # noqa: S603
                 args, capture_output=True, check=True, timeout=self.timeout_seconds
@@ -119,7 +119,7 @@ def get_video_processor() -> BaseVideoProcessor:
     return import_string(settings.VIDEO_PROCESSOR_CLASS)()
 
 
-def _placeholder_thumbnail(label):
+def _build_placeholder_thumbnail(label):
     image = Image.new("RGB", (480, 270), color=(36, 41, 56))
     ImageDraw.Draw(image).text((20, 120), f"ClipStack - {label[:30]}", fill=(230, 230, 230))
     buffer = io.BytesIO()

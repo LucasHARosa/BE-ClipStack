@@ -45,7 +45,7 @@ def enqueue_job(job_id):
     logger.info("job_enqueued", extra={"job_id": job_id})
 
 
-def _notify_finished(job, *, succeeded):
+def _schedule_finish_notification(job, *, succeeded):
     transaction.on_commit(
         partial(
             notification_tasks.notify_video_processed.delay,
@@ -75,12 +75,12 @@ def run_job(*, job_id, processor=None):
     video = job.video
     video_services.set_video_status(video=video, status=Video.Status.PROCESSING)
 
-    def on_progress(percent):
+    def save_progress(percent):
         ProcessingJob.objects.filter(pk=job.pk).update(progress=percent)
 
     processor = processor or get_video_processor()
     # .path só existe no FileSystemStorage; com S3, baixaria para um temporário antes.
-    result = processor.process(video.file.path, on_progress)
+    result = processor.process(video.file.path, save_progress)
 
     with transaction.atomic():
         video_services.save_video_metadata(
@@ -93,7 +93,7 @@ def run_job(*, job_id, processor=None):
             status=ProcessingJob.Status.COMPLETED, progress=100, finished_at=timezone.now()
         )
         video_services.set_video_status(video=video, status=Video.Status.COMPLETED)
-        _notify_finished(job, succeeded=True)
+        _schedule_finish_notification(job, succeeded=True)
 
     job.refresh_from_db()
     return job
@@ -115,7 +115,7 @@ def fail_job(*, job_id, error_message):
         job.finished_at = timezone.now()
         job.save(update_fields=["status", "error_message", "finished_at"])
         video_services.set_video_status(video=job.video, status=Video.Status.FAILED)
-        _notify_finished(job, succeeded=False)
+        _schedule_finish_notification(job, succeeded=False)
     return job
 
 

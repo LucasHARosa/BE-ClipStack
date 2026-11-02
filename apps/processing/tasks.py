@@ -11,7 +11,7 @@ BACKOFF_BASE_SECONDS = 10
 BACKOFF_MAX_SECONDS = 300
 
 
-def backoff_seconds(retries):
+def retry_delay_seconds(retries):
     # Jitter: jobs que falharam juntos (ex.: banco fora do ar) não voltam no mesmo segundo.
     delay = min(BACKOFF_BASE_SECONDS * 2**retries, BACKOFF_MAX_SECONDS)
     return delay + random.uniform(0, BACKOFF_BASE_SECONDS)  # noqa: S311
@@ -30,7 +30,7 @@ def process_video(self, job_id):
                 error_message=f"Falhou após {self.request.retries + 1} tentativas: {exc}",
             )
             return
-        raise self.retry(exc=exc, countdown=backoff_seconds(self.request.retries)) from exc
+        raise self.retry(exc=exc, countdown=retry_delay_seconds(self.request.retries)) from exc
     except SoftTimeLimitExceeded:
         services.fail_job(job_id=job_id, error_message="Tempo limite de processamento excedido.")
     except ProcessingError as exc:
