@@ -93,6 +93,56 @@ flowchart LR
     API & WP --- Media[(volume de mídia)]
 ```
 
+### Fluxo de uma requisição
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant G as Gunicorn (worker)
+    participant M as Middlewares
+    participant V as APIView.dispatch
+    participant S as Service / Selector
+    participant DB as PostgreSQL
+    C->>G: POST /api/v1/videos/ + Bearer
+    G->>M: WSGI: CORS → Security → ... → RequestId
+    M->>V: URL → as_view()
+    V->>V: initial(): JWT (busca o usuário no banco) → permissões → throttle (Redis)
+    V->>V: serializer.is_valid()
+    V->>S: create_video(owner, file, ...)
+    S->>DB: BEGIN · INSERT vídeo, tags, job · COMMIT
+    S-->>V: vídeo
+    V-->>M: Response 201 (renderer JSON)
+    M-->>C: X-Request-ID, headers CORS, log JSON
+    Note over V: exceção em qualquer ponto → EXCEPTION_HANDLER<br/>{"error": {code, message, details}}
+```
+
+### Fluxo da fila
+
+```mermaid
+sequenceDiagram
+    participant API as Django (service)
+    participant MQ as RabbitMQ
+    participant WP as worker-processing
+    participant WD as worker-default
+    participant DB as PostgreSQL
+    API->>DB: COMMIT (vídeo + job queued)
+    API->>MQ: on_commit → process_video.delay(job_id) [fila processing]
+    MQ->>WP: entrega (prefetch 1, acks_late)
+    WP->>DB: job processing, attempts = attempts + 1
+    WP->>WP: ffmpeg: duração, resolução, thumbnail (progresso no banco)
+    alt falha temporária
+        WP->>MQ: retry com backoff exponencial + jitter
+    else falha permanente ou tentativas esgotadas
+        WP->>DB: job e vídeo failed
+    end
+    WP->>DB: metadados + job/vídeo completed · COMMIT
+    WP->>MQ: ack + on_commit → notify_video_processed [fila default]
+    MQ->>WD: entrega
+    WD->>DB: Notification (event_key única)
+    WD->>MQ: send_notification_email [fila default]
+    Note over MQ,WD: Celery Beat (a cada 5 min): jobs presos em processing → failed
+```
+
 Organização do código (uma app por domínio):
 
 ```
@@ -127,6 +177,39 @@ core  ←  accounts  ←  videos  ←  processing
                             ↖  notifications
 ```
 
+`videos` precisa **iniciar** o processamento sem importar `processing`: ele chama a função
+configurada em `VIDEO_PROCESSING_ENTRYPOINT` (inversão de dependência pelo settings, como o
+`EMAIL_BACKEND` do Django).
+
+### Onde está cada coisa
+
+| Conceito | Onde |
+|---|---|
+| Settings por ambiente | `config/settings/{base,dev,prod,test}.py` |
+| Rotas e versionamento | `config/urls.py` → `config/api_v1.py` (DefaultRouter) → `apps/*/api/urls.py` |
+| App Celery, filas e Beat | `config/celery.py` + `CELERY_*` em `config/settings/base.py` |
+| QuerySet de visibilidade | `apps/videos/models.py` (`VideoQuerySet.visible_to`) |
+| Constraints (job ativo, idempotência) | `apps/processing/models.py`, `apps/core/models.py` |
+| Serializers de entrada e saída | `apps/videos/api/serializers.py` |
+| Views (FBV, APIView, Generic, ViewSets) | `apps/*/api/views.py` |
+| Regras de negócio e transações | `apps/*/services.py` |
+| Leituras complexas e estatísticas | `apps/*/selectors.py` |
+| Permissões customizadas | `apps/core/permissions.py` |
+| Exceções de domínio e formato de erro | `apps/core/exceptions.py`, `apps/core/exception_handler.py`, `apps/*/exceptions.py` |
+| Idempotency-Key | `apps/core/idempotency.py` |
+| Middleware de request id e logs JSON | `apps/core/middleware.py`, `apps/core/logs.py` |
+| Autenticação JWT | `apps/core/authentication.py`, `apps/accounts/api/views.py` |
+| Paginação | `apps/core/pagination.py` |
+| Filtros | `apps/videos/filters.py` |
+| Processadores de vídeo (DI) | `apps/processing/processors.py` (`VIDEO_PROCESSOR_CLASS`) |
+| Tasks e retries | `apps/processing/tasks.py`, `apps/notifications/tasks.py` |
+| Cache e signal de invalidação | `apps/videos/selectors.py`, `apps/videos/signals.py` |
+| Health check async | `apps/core/health.py` |
+| Django Admin e moderação | `apps/*/admin.py`, `apps/core/admin.py` |
+| Testes, laboratórios e integração | `apps/*/tests/`, `tests/`, `conftest.py` |
+| Contratos entre apps | `[tool.importlinter]` em `pyproject.toml` |
+| CI | `.github/workflows/ci.yml` |
+
 ### Modelo de dados
 
 ```mermaid
@@ -150,6 +233,7 @@ migration.
 ## Endpoints
 
 Todos sob `/api/v1/`. A raiz (`GET /api/v1/`) lista os recursos do router.
+Documentação interativa (OpenAPI 3) em **`/api/docs/`** (Swagger UI) e schema em `/api/schema/`.
 
 | Método e rota | Descrição | Acesso |
 |---|---|---|
@@ -277,9 +361,22 @@ leem os vídeos da pasta `./media`, a mesma em que o Django local grava os uploa
 só a infraestrutura: `docker compose up -d postgres redis rabbitmq` (e processe os jobs com
 `manage.py process_job --queued`).
 
+### Modo completo (tudo no Docker, API com Gunicorn)
+
+```bash
+cp .env.example .env
+docker compose --profile app up -d --wait   # migrate (uma vez) → web (Gunicorn) + workers + beat + flower
+docker compose exec web python manage.py createsuperuser
+```
+
+O `migrate` é um serviço próprio que roda **uma vez** e termina; o `web` só sobe depois dele
+(`service_completed_successfully`). Assim, várias réplicas da API nunca disputam as mesmas
+migrations. A imagem é multi-stage, roda como usuário não-root e tem ffmpeg.
+
 | Serviço | Endereço |
 |---|---|
 | API | <http://localhost:8000/api/v1/> |
+| Swagger UI | <http://localhost:8000/api/docs/> |
 | Django Admin | <http://localhost:8000/admin/> |
 | RabbitMQ (management) | <http://localhost:15672> (clipstack / clipstack) |
 | Flower (Celery) | <http://localhost:5555> |
@@ -321,6 +418,9 @@ uv run python -m pytest --cov=apps --cov-report=term-missing
 Os testes usam o Postgres (não SQLite: `select_for_update`, constraints parciais e
 `FILTER` dependem dele), cache em memória e broker `memory://`.
 
+**CI (GitHub Actions):** a cada push e pull request, `ruff check`, `ruff format --check`,
+`lint-imports`, `makemigrations --check` e `pytest` com Postgres 18 como service.
+
 ## Roadmap
 
 - [x] Setup: settings por ambiente, apps por domínio, PostgreSQL no Docker
@@ -333,4 +433,4 @@ Os testes usam o Postgres (não SQLite: `select_for_update`, constraints parciai
 - [x] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
 - [x] Cache de estatísticas e health check assíncrono
 - [x] Testes automatizados
-- [ ] CI, OpenAPI e compose completo com Gunicorn e workers
+- [x] CI, OpenAPI e compose completo com Gunicorn e workers
