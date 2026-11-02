@@ -11,7 +11,7 @@ logger = logging.getLogger("clipstack.request")
 _VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 
 
-def _describe(user):
+def _describe_user(user):
     if user is None:
         return None
     return "anonymous" if not user.is_authenticated else f"user:{user.pk}"
@@ -29,7 +29,7 @@ class RequestIdMiddleware:
         user_token = user_id_var.set(None)
 
         # Com JWT, aqui ainda é AnonymousUser: o DRF só autentica dentro da view.
-        user_before_view = _describe(getattr(request, "user", None))
+        user_before_view = _describe_user(getattr(request, "user", None))
         started = time.perf_counter()
         try:
             response = self.get_response(request)
@@ -46,7 +46,7 @@ class RequestIdMiddleware:
                 "status": response.status_code,
                 "duration_ms": duration_ms,
                 "user_before_view": user_before_view,
-                "user_after_view": _describe(getattr(request, "user", None)),
+                "user_after_view": _describe_user(getattr(request, "user", None)),
                 "user_id": user_id_var.get(),
             },
         )

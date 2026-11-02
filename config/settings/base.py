@@ -192,7 +192,7 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 5 * 60,
     },
     "purge-old-idempotency-keys": {
-        "task": "apps.core.tasks.purge_idempotency_keys",
+        "task": "apps.core.tasks.purge_expired_idempotency_keys",
         "schedule": 60 * 60,
     },
 }

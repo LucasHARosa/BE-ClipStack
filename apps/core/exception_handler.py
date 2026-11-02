@@ -13,14 +13,14 @@ from apps.core.exceptions import DomainError
 logger = logging.getLogger("clipstack.errors")
 
 
-def _error(code, message, details=None):
+def _error_body(code, message, details=None):
     return {"error": {"code": code, "message": str(message), "details": details or {}}}
 
 
 def api_exception_handler(exc, context):
     if isinstance(exc, DomainError):
         set_rollback()
-        return Response(_error(exc.code, exc.message, exc.details), status=exc.status_code)
+        return Response(_error_body(exc.code, exc.message, exc.details), status=exc.status_code)
 
     response = drf_exception_handler(exc, context)
 
@@ -30,12 +30,12 @@ def api_exception_handler(exc, context):
         logger.exception("unhandled_exception", exc_info=exc)
         set_rollback()
         return Response(
-            _error("server_error", "Erro interno. Use o X-Request-ID para rastrear."),
+            _error_body("server_error", "Erro interno. Use o X-Request-ID para rastrear."),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
     if isinstance(exc, exceptions.ValidationError):
-        response.data = _error(
+        response.data = _error_body(
             "validation_error", "Os dados enviados são inválidos.", response.data
         )
         return response
@@ -47,5 +47,5 @@ def api_exception_handler(exc, context):
     details = data
     if isinstance(exc, exceptions.Throttled):
         details = {**details, "wait_seconds": exc.wait}
-    response.data = _error(code, message, details)
+    response.data = _error_body(code, message, details)
     return response

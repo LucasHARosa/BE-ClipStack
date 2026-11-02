@@ -7,7 +7,7 @@ from django.utils import timezone
 
 from apps.core import health
 from apps.core.models import IdempotencyKey
-from apps.core.tasks import purge_idempotency_keys
+from apps.core.tasks import purge_expired_idempotency_keys
 
 pytestmark = pytest.mark.django_db
 
@@ -62,7 +62,7 @@ def test_purge_idempotency_keys_removes_only_old_ones(user, settings):
     )
     IdempotencyKey.objects.create(key="nova", **fields)
 
-    assert purge_idempotency_keys() == 1  # task chamada direto, sem broker
+    assert purge_expired_idempotency_keys() == 1  # task chamada direto, sem broker
     assert list(IdempotencyKey.objects.values_list("key", flat=True)) == ["nova"]
 
 

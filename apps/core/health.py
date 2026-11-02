@@ -35,7 +35,7 @@ def _check_rabbitmq():
         conn.ensure_connection(max_retries=1)
 
 
-async def _timed(name, coroutine):
+async def _run_timed_check(name, coroutine):
     started = time.perf_counter()
     try:
         await asyncio.wait_for(coroutine, timeout=CHECK_TIMEOUT_SECONDS)
@@ -52,9 +52,9 @@ async def health_view(request):
     started = time.perf_counter()
     # thread_sensitive=False: com o padrão, os checks síncronos dividiriam uma thread só.
     results = await asyncio.gather(
-        _timed("database", sync_to_async(_check_database, thread_sensitive=False)()),
-        _timed("redis", _check_redis()),
-        _timed("rabbitmq", sync_to_async(_check_rabbitmq, thread_sensitive=False)()),
+        _run_timed_check("database", sync_to_async(_check_database, thread_sensitive=False)()),
+        _run_timed_check("redis", _check_redis()),
+        _run_timed_check("rabbitmq", sync_to_async(_check_rabbitmq, thread_sensitive=False)()),
     )
     checks = dict(results)
     healthy = all(check["ok"] for check in checks.values())
