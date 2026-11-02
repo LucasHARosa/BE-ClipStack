@@ -3,8 +3,7 @@ from django.contrib import admin
 from .models import Notification
 
 
-# Sem o ModerationAdminMixin de propósito: notificação é privada, nem o ADMIN vê as dos
-# outros. Só o superuser (equipe técnica) acessa, para suporte e diagnóstico.
+# Sem o ModerationAdminMixin: notificação é privada, nem o ADMIN vê as dos outros.
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
     list_display = ("user", "message", "video", "is_read", "created_at")
