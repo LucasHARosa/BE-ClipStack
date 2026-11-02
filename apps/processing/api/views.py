@@ -2,6 +2,7 @@ from rest_framework import mixins, viewsets
 
 from apps.processing import selectors
 from apps.processing.api.serializers import ProcessingJobSerializer
+from apps.processing.models import ProcessingJob
 
 
 class ProcessingJobViewSet(
@@ -16,4 +17,8 @@ class ProcessingJobViewSet(
     ordering_fields = ["created_at"]
 
     def get_queryset(self):
+        # swagger_fake_view: na geração do OpenAPI o usuário é anônimo; devolve um queryset
+        # vazio só para o drf-spectacular descobrir o model.
+        if getattr(self, "swagger_fake_view", False):
+            return ProcessingJob.objects.none()
         return selectors.job_queryset(user=self.request.user)

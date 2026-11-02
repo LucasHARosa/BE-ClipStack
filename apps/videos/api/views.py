@@ -1,5 +1,7 @@
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -12,6 +14,7 @@ from apps.core.permissions import IsAdminRole, IsAuthorOrAdmin, IsOwnerOrReadOnl
 from apps.videos import selectors, services
 from apps.videos.api.serializers import (
     CommentSerializer,
+    DashboardStatsSerializer,
     TagSerializer,
     VideoDetailSerializer,
     VideoListSerializer,
@@ -19,11 +22,14 @@ from apps.videos.api.serializers import (
     VideoUploadSerializer,
 )
 from apps.videos.filters import VideoFilter
-from apps.videos.models import Tag, Video
+from apps.videos.models import Comment, Tag, Video
 
 # --------------------------------------------------------------------------- FBV
 
 
+# @extend_schema: anotação do drf-spectacular para o que ele não consegue deduzir sozinho
+# (views sem serializer, respostas diferentes da entrada, headers).
+@extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def meta_view(request):
@@ -46,6 +52,7 @@ def meta_view(request):
 
 class DashboardStatsView(APIView):
     # APIView: não é um recurso com CRUD, é um relatório (agregações). Um método por verbo.
+    @extend_schema(responses=DashboardStatsSerializer)
     def get(self, request):
         return Response(selectors.dashboard_stats(user=request.user))
 
@@ -104,6 +111,18 @@ class VideoViewSet(viewsets.ModelViewSet):
             return VideoListSerializer
         return VideoDetailSerializer
 
+    @extend_schema(
+        request={"multipart/form-data": VideoUploadSerializer},
+        responses={201: VideoDetailSerializer},
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                description="Chave única por operação; repetir devolve a resposta original.",
+            )
+        ],
+    )
     def create(self, request, *args, **kwargs):
         # Com o header Idempotency-Key, repetir o POST devolve a resposta original em vez de
         # criar outro vídeo (retry depois de timeout, clique duplo).
@@ -118,6 +137,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         output = VideoDetailSerializer(video, context=self.get_serializer_context())
         return Response(output.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(request=VideoUpdateSerializer, responses=VideoDetailSerializer)
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
         video = self.get_object()
@@ -134,6 +154,7 @@ class VideoViewSet(viewsets.ModelViewSet):
 
     # @action(detail=True): POST /videos/{id}/reprocess/. A view só orquestra: get_object()
     # (visibilidade → 404), service (regra + lock → 409 se não puder) e resposta.
+    @extend_schema(request=None, responses={202: VideoDetailSerializer})
     @action(detail=True, methods=["post"])
     def reprocess(self, request, pk=None):
         video = self.get_object()
@@ -187,6 +208,9 @@ class CommentViewSet(
         return self._video
 
     def get_queryset(self):
+        # swagger_fake_view: na geração do OpenAPI não há request real nem video_pk na URL.
+        if getattr(self, "swagger_fake_view", False):
+            return Comment.objects.none()
         # Reverso video.comments + select_related do autor (evita N+1 no author_username).
         return self.get_video().comments.select_related("author")
 

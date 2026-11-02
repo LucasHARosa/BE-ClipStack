@@ -32,6 +32,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "corsheaders",
     "django_filters",
+    "drf_spectacular",
     "rest_framework",
     # Tabelas OutstandingToken/BlacklistedToken: logout e rotação de refresh tokens.
     "rest_framework_simplejwt.token_blacklist",
@@ -127,9 +128,13 @@ USE_TZ = True
 # ---------------------------------------------------------------- arquivos
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# MEDIA: arquivos enviados pelos usuários (vídeos e thumbnails).
+# MEDIA: arquivos enviados pelos usuários (vídeos e thumbnails). Em produção real seria um
+# object storage (S3 via django-storages) no STORAGES["default"].
 MEDIA_URL = "media/"
 MEDIA_ROOT = env.path("MEDIA_ROOT", default=BASE_DIR / "media")
+# Só para o compose local completo (DEBUG=False): o próprio Django serve /media/. Em
+# produção, quem serve a mídia é o storage/CDN, nunca o processo da aplicação.
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=False)
 
 # ---------------------------------------------------------------- CORS
 # CORS (Cross-Origin Resource Sharing) é regra do NAVEGADOR: o JS de outra origem só lê a
@@ -176,6 +181,8 @@ REST_FRAMEWORK = {
     # Esquecer a permissão numa view nova não a deixa aberta.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
+    # drf-spectacular gera o schema OpenAPI 3 lendo views, serializers e permissões.
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     # Filtros (django-filter), busca (?search=) e ordenação (?ordering=). Cada view declara
     # o que aceita (filterset_class, search_fields, ordering_fields); sem isso, não fazem nada.
     "DEFAULT_FILTER_BACKENDS": [
@@ -273,6 +280,22 @@ LOGGING = {
         # O RequestIdMiddleware já registra cada requisição; evita a linha duplicada do Django.
         "django.request": {"level": "ERROR"},
         "django.server": {"level": "WARNING"},
+    },
+}
+
+# ---------------------------------------------------------------- OpenAPI
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ClipStack API",
+    "DESCRIPTION": "Upload e processamento assíncrono de vídeos (Django, DRF, Celery, RabbitMQ).",
+    "VERSION": "1.0.0",
+    # O endpoint do schema não aparece dentro do próprio schema.
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Separa os schemas de request e response quando há campos read_only/write_only.
+    "COMPONENT_SPLIT_REQUEST": True,
+    # Dois campos "status" com choices diferentes (vídeo e job): nomes explícitos no schema.
+    "ENUM_NAME_OVERRIDES": {
+        "VideoStatusEnum": "apps.videos.models.Video.Status",
+        "JobStatusEnum": "apps.processing.models.ProcessingJob.Status",
     },
 }
 

@@ -111,7 +111,7 @@ class Video(models.Model):
 
     # @property usada pelo serializer: o frontend usa para decidir se faz polling.
     @property
-    def is_processing(self):
+    def is_processing(self) -> bool:
         return self.status in {self.Status.QUEUED, self.Status.PROCESSING}
 
 

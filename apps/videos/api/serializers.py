@@ -11,6 +11,7 @@ fica no service, porque:
 from pathlib import Path
 
 from django.conf import settings
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.videos.models import Comment, Tag, Video, VideoMetadata
@@ -91,6 +92,8 @@ class VideoDetailSerializer(VideoListSerializer):
         )
         read_only_fields = fields
 
+    # @extend_schema_field: diz ao OpenAPI o formato do campo calculado (sem isso, vira string).
+    @extend_schema_field(LatestJobSerializer(allow_null=True))
     def get_latest_job(self, obj):
         # jobs.all() usa o cache do prefetch_related("jobs") feito no selector. Um
         # .order_by()/.latest() aqui ignoraria o cache e faria 1 query por vídeo.
@@ -98,15 +101,28 @@ class VideoDetailSerializer(VideoListSerializer):
         jobs = list(obj.jobs.all())
         return LatestJobSerializer(jobs[0]).data if jobs else None
 
-    def get_is_owner(self, obj):
+    def get_is_owner(self, obj) -> bool:
         # self.context["request"]: o view do DRF injeta o request no context do serializer.
         request = self.context.get("request")
         return bool(request and request.user.is_authenticated and obj.owner_id == request.user.id)
 
-    def get_can_reprocess(self, obj):
+    def get_can_reprocess(self, obj) -> bool:
         # Só para a INTERFACE decidir se mostra o botão. O service revalida tudo (com lock)
         # quando o POST /reprocess/ chegar. O admin não reprocessa vídeo dos outros (403).
         return self.get_is_owner(obj) and obj.can_be_reprocessed()
+
+
+class DashboardStatsSerializer(serializers.Serializer):
+    # Serializer puro só de SAÍDA: documenta no OpenAPI o formato do dict das estatísticas.
+    class TopCommentedSerializer(serializers.Serializer):
+        id = serializers.IntegerField()
+        title = serializers.CharField()
+        comments_count = serializers.IntegerField()
+
+    total_videos = serializers.IntegerField()
+    by_status = serializers.DictField(child=serializers.IntegerField())
+    total_duration_seconds = serializers.IntegerField()
+    top_commented = TopCommentedSerializer(many=True)
 
 
 # --------------------------------------------------------------------------- entrada
