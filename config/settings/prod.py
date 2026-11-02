@@ -1,7 +1,7 @@
 """Settings de produção. Tudo sensível vem de variáveis de ambiente."""
 
 from .base import *  # noqa: F403
-from .base import env
+from .base import MIDDLEWARE, env
 
 DEBUG = False
 # Sem default: em produção, esquecer ALLOWED_HOSTS deve quebrar o boot, não liberar tudo.
@@ -20,3 +20,16 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.smtp.EmailBackend")
+
+# WhiteNoise: serve os estáticos (Admin, Swagger) direto pelo Gunicorn, com cache e compressão,
+# sem um Nginx só para isso. Só em produção: em dev o runserver já serve os estáticos, e a
+# pasta STATIC_ROOT só existe depois do collectstatic (feito no build da imagem).
+MIDDLEWARE.insert(
+    MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+)
+# Arquivos com hash no nome (cache "para sempre" no navegador), gerados pelo collectstatic.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
