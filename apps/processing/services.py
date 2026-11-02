@@ -1,10 +1,3 @@
-"""Casos de uso do processamento.
-
-Fluxo: start_processing (na requisição) → enqueue_job (após o commit) → run_job (no worker)
-→ completed, ou fail_job ao esgotar as tentativas. A task Celery (etapa 8) só embrulha o
-run_job com retry; a regra fica aqui, testável sem Celery.
-"""
-
 import logging
 from datetime import timedelta
 from functools import partial
@@ -25,11 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def start_processing(*, video):
-    # Chamado DENTRO da transação de quem criou ou reprocessou o vídeo (via settings
-    # VIDEO_PROCESSING_ENTRYPOINT, porque videos não importa processing).
+    # Roda dentro da transação de quem criou ou reprocessou o vídeo.
     try:
-        # atomic aninhado = SAVEPOINT. Se o INSERT violar a constraint, só o savepoint é
-        # desfeito; sem ele, a transação de fora ficaria quebrada para qualquer query seguinte.
+        # Savepoint: sem ele, o IntegrityError quebraria a transação de fora.
         with transaction.atomic():
             job = ProcessingJob.objects.create(video=video)
     except IntegrityError as exc:
@@ -39,26 +30,22 @@ def start_processing(*, video):
 
     video_services.set_video_status(video=video, status=Video.Status.QUEUED)
 
-    # on_commit: publica na fila só DEPOIS do COMMIT. Sem isso, o worker pode pegar a
-    # mensagem antes do commit e não achar o job (a linha ainda não é visível para outras
-    # conexões), ou a transação sofre rollback e a task roda sobre um job que nunca existiu.
+    # Publica só depois do COMMIT: antes dele, o worker não enxerga o job, e um rollback
+    # deixaria uma mensagem órfã na fila.
     transaction.on_commit(partial(enqueue_job, job.pk))
     return job
 
 
 def enqueue_job(job_id):
-    # Import local: tasks.py importa este módulo (import circular no topo).
+    # Import local: tasks.py importa este módulo.
     from apps.processing.tasks import process_video
 
-    # Publica no RabbitMQ; o CELERY_TASK_ROUTES manda para a fila "processing". Passa o ID,
-    # nunca o objeto: a mensagem é JSON e pode esperar na fila; o worker lê o estado atual.
+    # Só o id: o worker lê o estado atual do banco quando for processar.
     process_video.delay(job_id)
     logger.info("job_enqueued", extra={"job_id": job_id})
 
 
 def _notify_finished(job, *, succeeded):
-    # Avisa o dono na fila "default" (leve), depois do commit do resultado. event_key torna a
-    # notificação idempotente se esta função for chamada de novo para o mesmo job.
     transaction.on_commit(
         partial(
             notification_tasks.notify_video_processed.delay,
@@ -70,17 +57,14 @@ def _notify_finished(job, *, succeeded):
 
 
 def run_job(*, job_id, processor=None):
-    # processor por parâmetro: nos testes, passa-se um fake; em produção vem do settings.
     job = ProcessingJob.objects.select_related("video").get(pk=job_id)
 
-    # Idempotência: a mesma mensagem pode ser entregue de novo (retry, acks_late, worker que
-    # morreu depois de terminar). Job terminado não é processado outra vez.
+    # Idempotente: com acks_late, a mesma mensagem pode chegar de novo.
     if job.status in {ProcessingJob.Status.COMPLETED, ProcessingJob.Status.FAILED}:
         logger.info("job_already_finished", extra={"job_id": job_id, "status": job.status})
         return job
 
-    # F("attempts") + 1: o incremento acontece no banco (UPDATE ... SET attempts = attempts + 1),
-    # sem ler-somar-gravar em Python, que perderia incrementos com dois workers ao mesmo tempo.
+    # F(): o incremento acontece no banco, sem corrida entre workers.
     ProcessingJob.objects.filter(pk=job.pk).update(
         status=ProcessingJob.Status.PROCESSING,
         progress=0,
@@ -92,12 +76,10 @@ def run_job(*, job_id, processor=None):
     video_services.set_video_status(video=video, status=Video.Status.PROCESSING)
 
     def on_progress(percent):
-        # UPDATE direto e curto: o frontend lê o progresso por polling enquanto o job roda.
         ProcessingJob.objects.filter(pk=job.pk).update(progress=percent)
 
     processor = processor or get_video_processor()
-    # .path só existe no FileSystemStorage. Com S3 (django-storages), o worker baixaria o
-    # arquivo para um temporário antes de chamar o ffmpeg.
+    # .path só existe no FileSystemStorage; com S3, baixaria para um temporário antes.
     result = processor.process(video.file.path, on_progress)
 
     with transaction.atomic():
@@ -119,14 +101,13 @@ def run_job(*, job_id, processor=None):
 
 def fail_job(*, job_id, error_message):
     with transaction.atomic():
-        # select_for_update(of=("self",)): trava só a linha do job, não a do vídeo trazida
-        # pelo JOIN do select_related (FOR UPDATE OF processing_processingjob).
+        # of=("self",): trava só o job, não o vídeo do JOIN.
         job = (
             ProcessingJob.objects.select_for_update(of=("self",))
             .select_related("video")
             .get(pk=job_id)
         )
-        # Idempotente: job já terminado (por outra execução ou pelo Beat) não muda.
+        # Job já terminado (por outra execução ou pelo Beat) não muda.
         if job.status in {ProcessingJob.Status.COMPLETED, ProcessingJob.Status.FAILED}:
             return job
         job.status = ProcessingJob.Status.FAILED
@@ -140,7 +121,6 @@ def fail_job(*, job_id, error_message):
 
 def fail_stuck_jobs():
     cutoff = timezone.now() - timedelta(minutes=settings.STUCK_JOB_TIMEOUT_MINUTES)
-    # Usa o índice (status, started_at) criado no model para esta consulta.
     stuck_ids = list(
         ProcessingJob.objects.filter(
             status=ProcessingJob.Status.PROCESSING, started_at__lt=cutoff

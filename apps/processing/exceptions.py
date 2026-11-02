@@ -1,10 +1,3 @@
-"""Exceções do processamento.
-
-Duas famílias com tratamento diferente na task (etapa 8):
-- TransientProcessingError: falha temporária (timeout, ffmpeg indisponível) → retry com backoff.
-- ProcessingError: falha permanente (arquivo corrompido) → marca failed sem retry.
-"""
-
 from apps.core.exceptions import ConflictError
 
 

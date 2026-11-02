@@ -4,7 +4,6 @@ from apps.processing.models import ProcessingJob
 
 
 class ProcessingJobSerializer(serializers.ModelSerializer):
-    # /jobs/ é somente leitura: quem altera o job é o worker, via service.
     video_title = serializers.CharField(source="video.title", read_only=True)
 
     class Meta:

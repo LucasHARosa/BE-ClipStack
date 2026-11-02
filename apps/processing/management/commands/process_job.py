@@ -1,10 +1,3 @@
-"""Management command: processa jobs de forma síncrona, sem fila.
-
-Uso: manage.py process_job 12 13   |   manage.py process_job --queued
-Útil em desenvolvimento e para reprocessar algo à mão em produção. Um management command é o
-equivalente a um script de CLI que já carrega o Django (settings, ORM).
-"""
-
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.module_loading import import_string
 

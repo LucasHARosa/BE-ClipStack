@@ -16,9 +16,8 @@ class ProcessingJobInline(ModerationAdminMixin, admin.TabularInline):
     show_change_link = True
 
 
-# A fronteira entre apps proíbe videos de importar processing. Então é processing que estende
-# o admin do vídeo: tira o registro original e registra uma subclasse com o inline de jobs.
-# Funciona porque o Admin carrega os admin.py na ordem do INSTALLED_APPS (videos vem antes).
+# videos não pode importar processing, então é processing que estende o admin do vídeo.
+# Depende de videos vir antes no INSTALLED_APPS.
 admin.site.unregister(Video)
 
 

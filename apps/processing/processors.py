@@ -1,10 +1,4 @@
-"""Processadores de vídeo: extraem duração, resolução e thumbnail.
-
-DI por configuração: settings.VIDEO_PROCESSOR_CLASS diz qual classe usar, e get_video_processor()
-a carrega com import_string. É o mesmo padrão do EMAIL_BACKEND e do CACHES do Django: trocar a
-implementação por ambiente sem nenhum `if` no código. O service também aceita um processador
-por parâmetro, o que é útil nos testes.
-"""
+"""Classe escolhida por settings.VIDEO_PROCESSOR_CLASS (fake em dev/testes, ffmpeg real)."""
 
 import io
 import json
@@ -29,15 +23,11 @@ class ProcessingResult:
 
 
 class BaseVideoProcessor:
-    # Contrato: process(caminho, on_progress) → ProcessingResult. on_progress(int 0-100) é
-    # chamado durante o trabalho para o job registrar o progresso no banco.
     def process(self, file_path: str, on_progress) -> ProcessingResult:
         raise NotImplementedError
 
 
 class FakeVideoProcessor(BaseVideoProcessor):
-    # Simula o processamento: avança o progresso com sleeps, inventa metadados e gera um
-    # thumbnail com o Pillow. Usado em dev sem ffmpeg e nos testes (com 0 segundos).
     steps = 5
 
     def process(self, file_path, on_progress):
@@ -48,19 +38,18 @@ class FakeVideoProcessor(BaseVideoProcessor):
             time.sleep(settings.FAKE_PROCESSOR_STEP_SECONDS)
             on_progress(step * 100 // self.steps)
         return ProcessingResult(
-            duration_seconds=max(1, size // 100_000),  # "duração" proporcional ao tamanho
+            duration_seconds=max(1, size // 100_000),
             resolution="1280x720",
             thumbnail=_placeholder_thumbnail(Path(file_path).stem),
         )
 
 
 class FfmpegVideoProcessor(BaseVideoProcessor):
-    # Processamento real: ffprobe lê duração e resolução; ffmpeg extrai um frame como JPEG.
     timeout_seconds = 120
 
     def process(self, file_path, on_progress):
         if not shutil.which("ffprobe") or not shutil.which("ffmpeg"):
-            # Temporário: o worker pode ter subido sem o binário; outro worker pode ter.
+            # Temporário: outro worker pode ter o binário.
             raise TransientProcessingError("ffmpeg/ffprobe não encontrados no PATH.")
         on_progress(10)
         probe = self._run(
@@ -84,7 +73,6 @@ class FfmpegVideoProcessor(BaseVideoProcessor):
         width, height = streams[0]["width"], streams[0]["height"]
         duration = float(info.get("format", {}).get("duration") or 0)
         on_progress(50)
-        # Frame em 10% do vídeo (no máximo 3 s), escalado para 480 px de largura.
         at = min(3.0, duration * 0.1)
         thumbnail = self._run(
             [
