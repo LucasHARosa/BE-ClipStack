@@ -1,9 +1,13 @@
+from datetime import timedelta
 from unittest import mock
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.core import health
+from apps.core.models import IdempotencyKey
+from apps.core.tasks import purge_idempotency_keys
 
 pytestmark = pytest.mark.django_db
 
@@ -47,6 +51,19 @@ class TestRequestId:
         assert len(generated.headers["X-Request-ID"]) == 32
         assert propagated.headers["X-Request-ID"] == "abc-123"
         assert unsafe.headers["X-Request-ID"] != "<script>"
+
+
+def test_purge_idempotency_keys_removes_only_old_ones(user, settings):
+    settings.IDEMPOTENCY_KEY_TTL_HOURS = 24
+    fields = {"user": user, "request_path": "/", "response_status": 201, "response_snapshot": {}}
+    old = IdempotencyKey.objects.create(key="velha", **fields)
+    IdempotencyKey.objects.filter(pk=old.pk).update(
+        created_at=timezone.now() - timedelta(hours=25)  # auto_now_add ignora valor no create
+    )
+    IdempotencyKey.objects.create(key="nova", **fields)
+
+    assert purge_idempotency_keys() == 1  # task chamada direto, sem broker
+    assert list(IdempotencyKey.objects.values_list("key", flat=True)) == ["nova"]
 
 
 class TestHealth:
