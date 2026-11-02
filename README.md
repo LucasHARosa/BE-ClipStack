@@ -299,15 +299,27 @@ Celery Beat marca como falhos os jobs presos em processamento.
 docker compose logs -f worker-processing worker-default   # acompanhar as tasks e os emails (console)
 ```
 
-### Qualidade
+### Testes e qualidade
 
 ```bash
 uv run ruff check .               # lint
 uv run ruff format .              # formatação
 uv run lint-imports               # fronteiras entre apps
 uv run python manage.py makemigrations --check   # nenhuma migration pendente
-uv run pytest                     # testes
+uv run python -m pytest           # testes (Postgres do docker compose; sem Redis/RabbitMQ)
+uv run python -m pytest --cov=apps --cov-report=term-missing
 ```
+
+122 testes (cobertura de ~96%) com pytest, pytest-django e factory_boy:
+
+| Onde | O que cobre |
+|---|---|
+| `apps/*/tests/` | models e QuerySets, services (com processador fake por DI), tasks executadas direto (sucesso, retry com backoff, retries esgotados, erro permanente, entrega duplicada), API (status codes, validação, formato de erro, paginação, filtros, Idempotency-Key), email (`mailoutbox`), cache |
+| `tests/test_labs.py` | permissão de objeto que não protege o list, usuário visto pelo middleware com JWT, throttling 429, CORS, N+1 travado com `django_assert_num_queries`, `on_commit` com e sem rollback, matriz 404 vs 403 |
+| `tests/test_integration.py` | upload pela API → job → task → `completed` → notificação → email |
+
+Os testes usam o Postgres (não SQLite: `select_for_update`, constraints parciais e
+`FILTER` dependem dele), cache em memória e broker `memory://`.
 
 ## Roadmap
 
@@ -320,5 +332,5 @@ uv run pytest                     # testes
 - [x] CORS, middleware de request id, throttling, paginação, filtros, erros padronizados, logs JSON
 - [x] Celery + RabbitMQ (duas filas), retries, Beat, Flower, notificações
 - [x] Cache de estatísticas e health check assíncrono
-- [ ] Testes automatizados
+- [x] Testes automatizados
 - [ ] CI, OpenAPI e compose completo com Gunicorn e workers
