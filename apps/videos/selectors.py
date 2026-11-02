@@ -1,9 +1,18 @@
 """Leituras de vídeos (selectors). Selector não escreve e devolve QuerySet sempre que possível,
 para a view ainda poder filtrar e paginar (o LIMIT entra no mesmo SQL)."""
 
+from django.core.cache import cache
 from django.db.models import Count, Q, Sum
 
 from apps.videos.models import Video
+
+STATS_CACHE_TTL = 5 * 60
+# Chave das estatísticas de toda a plataforma (o que o admin vê).
+STATS_ALL_KEY = "dashboard:stats:all"
+
+
+def stats_cache_key(user_id):
+    return f"dashboard:stats:user:{user_id}"
 
 
 def video_queryset(*, user, with_jobs=False):
@@ -17,9 +26,21 @@ def video_queryset(*, user, with_jobs=False):
 
 
 def dashboard_stats(*, user):
+    # Cache-aside: tenta o cache; se não houver (miss), calcula no banco e grava com TTL.
+    # A invalidação (a parte difícil) fica em apps/videos/signals.py: quando um vídeo, os
+    # metadados ou um comentário mudam, a chave do dono e a da plataforma são apagadas. O TTL
+    # é só uma rede de segurança para alguma escrita que escape dos signals (ex.: update()).
+    is_admin = getattr(user, "is_admin", False)
+    key = STATS_ALL_KEY if is_admin else stats_cache_key(user.pk)
+    return cache.get_or_set(
+        key, lambda: _compute_dashboard_stats(user=user, is_admin=is_admin), STATS_CACHE_TTL
+    )
+
+
+def _compute_dashboard_stats(*, user, is_admin):
     # Escopo: o usuário vê as estatísticas dos próprios vídeos; o admin, da plataforma toda.
     videos = Video.objects.alive()
-    if not getattr(user, "is_admin", False):
+    if not is_admin:
         videos = videos.owned_by(user)
 
     # aggregate(): UM resultado para o conjunto inteiro, numa query só.
