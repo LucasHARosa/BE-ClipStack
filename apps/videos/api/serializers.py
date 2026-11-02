@@ -1,10 +1,8 @@
-from pathlib import Path
-
-from django.conf import settings
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.videos.models import Comment, Tag, Video, VideoMetadata
+from apps.videos.validators import validate_video_extension, validate_video_size
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -57,9 +55,9 @@ class VideoListSerializer(serializers.ModelSerializer):
 
 class VideoDetailSerializer(VideoListSerializer):
     metadata = VideoMetadataSerializer(read_only=True)
-    latest_job = serializers.SerializerMethodField()
-    is_owner = serializers.SerializerMethodField()
-    can_reprocess = serializers.SerializerMethodField()
+    latest_job = serializers.SerializerMethodField(method_name="serialize_latest_job")
+    is_owner = serializers.SerializerMethodField(method_name="is_requested_by_owner")
+    can_reprocess = serializers.SerializerMethodField(method_name="can_requester_reprocess")
 
     class Meta(VideoListSerializer.Meta):
         fields = (
@@ -74,18 +72,18 @@ class VideoDetailSerializer(VideoListSerializer):
         read_only_fields = fields
 
     @extend_schema_field(LatestJobSerializer(allow_null=True))
-    def get_latest_job(self, obj):
+    def serialize_latest_job(self, video):
         # jobs.all() usa o prefetch do selector; .order_by()/.latest() fariam 1 query por vídeo.
-        jobs = list(obj.jobs.all())
+        jobs = list(video.jobs.all())
         return LatestJobSerializer(jobs[0]).data if jobs else None
 
-    def get_is_owner(self, obj) -> bool:
+    def is_requested_by_owner(self, video) -> bool:
         request = self.context.get("request")
-        return bool(request and request.user.is_authenticated and obj.owner_id == request.user.id)
+        return bool(request and request.user.is_authenticated and video.owner_id == request.user.id)
 
-    def get_can_reprocess(self, obj) -> bool:
+    def can_requester_reprocess(self, video) -> bool:
         # Só para a interface; o service revalida com lock.
-        return self.get_is_owner(obj) and obj.can_be_reprocessed()
+        return self.is_requested_by_owner(video) and video.can_be_reprocessed()
 
 
 class DashboardStatsSerializer(serializers.Serializer):
@@ -112,18 +110,9 @@ class VideoUploadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Video
         fields = ("title", "description", "file", "visibility", "tags")
-
-    def validate_file(self, value):
-        extension = Path(value.name).suffix.lower()
-        allowed = settings.VIDEO_ALLOWED_EXTENSIONS
-        if extension not in allowed:
-            raise serializers.ValidationError(
-                f"Extensão {extension or '(nenhuma)'} não permitida. Use: {', '.join(allowed)}."
-            )
-        max_mb = settings.VIDEO_MAX_UPLOAD_SIZE_MB
-        if value.size > max_mb * 1024 * 1024:
-            raise serializers.ValidationError(f"O arquivo passa do limite de {max_mb} MB.")
-        return value
+        extra_kwargs = {
+            "file": {"validators": [validate_video_extension, validate_video_size]},
+        }
 
 
 class VideoUpdateSerializer(serializers.ModelSerializer):
