@@ -24,17 +24,12 @@ from apps.videos.api.serializers import (
 from apps.videos.filters import VideoFilter
 from apps.videos.models import Comment, Tag, Video
 
-# --------------------------------------------------------------------------- FBV
 
-
-# @extend_schema: anotação do drf-spectacular para o que ele não consegue deduzir sozinho
-# (views sem serializer, respostas diferentes da entrada, headers).
 @extend_schema(responses=OpenApiTypes.OBJECT)
 @api_view(["GET"])
 @permission_classes([permissions.AllowAny])
 def meta_view(request):
-    # @api_view (FBV, Function-Based View): endpoint de leitura, sem recurso nem CRUD.
-    # Dá ao frontend as opções válidas sem duplicar as choices em TypeScript.
+    # O frontend não duplica as choices em TypeScript.
     return Response(
         {
             "video_statuses": [{"value": v, "label": label} for v, label in Video.Status.choices],
@@ -47,46 +42,27 @@ def meta_view(request):
     )
 
 
-# --------------------------------------------------------------------------- APIView
-
-
 class DashboardStatsView(APIView):
-    # APIView: não é um recurso com CRUD, é um relatório (agregações). Um método por verbo.
     @extend_schema(responses=DashboardStatsSerializer)
     def get(self, request):
         return Response(selectors.dashboard_stats(user=request.user))
 
 
-# --------------------------------------------------------------------------- ModelViewSet
-
-
 class VideoViewSet(viewsets.ModelViewSet):
-    # ModelViewSet: recurso com CRUD COMPLETO (list, create, retrieve, update, destroy)
-    # + @action reprocess. multipart para o upload do arquivo; JSON para o PATCH.
     parser_classes = [MultiPartParser, FormParser, JSONParser]
-    # ?status=&tag=&visibility=&created_after=&created_before=&mine=true (django-filter)
     filterset_class = VideoFilter
-    # ?search=texto → title ILIKE '%texto%' (SearchFilter)
     search_fields = ["title"]
-    # ?ordering=-created_at | title (OrderingFilter). Sem a lista, o cliente poderia ordenar
-    # por qualquer campo, inclusive sem índice.
     ordering_fields = ["created_at", "title"]
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        # get_queryset() decide o que cada usuário PODE VER. Fora dele → 404 em qualquer ação
-        # de detalhe, sem revelar que o vídeo existe (vídeo privado de outra pessoa).
-        # Prefetch só do que o serializer da ação vai ler: o destroy não serializa nada e a
-        # lista não mostra o último job.
+        # Prefetch só do que a ação serializa: o destroy não serializa e a lista não tem jobs.
         if self.action == "destroy":
             return Video.objects.visible_to(self.request.user)
         return selectors.video_queryset(user=self.request.user, with_jobs=self.action != "list")
 
     def get_permissions(self):
-        # Matriz de permissões (o que o usuário pode FAZER com o que vê):
-        #   editar e reprocessar → só o dono (o admin vê o vídeo, mas recebe 403)
-        #   apagar               → o dono ou o admin (moderação)
-        # Composição com | : basta uma das permissões aceitar.
+        # Editar e reprocessar: só o dono. Apagar: o dono ou o admin (moderação).
         if self.action in {"update", "partial_update", "reprocess"}:
             return [permissions.IsAuthenticated(), IsOwnerOrReadOnly()]
         if self.action == "destroy":
@@ -94,15 +70,13 @@ class VideoViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def get_throttles(self):
-        # Upload: além dos limites padrão (anon/user), o scope "upload" (10/hora por usuário).
-        # throttle_scope só tem efeito com o ScopedRateThrottle na lista.
+        # Soma o scope "upload" aos limites padrão.
         if self.action == "create":
             self.throttle_scope = "upload"
             return [*super().get_throttles(), ScopedRateThrottle()]
         return super().get_throttles()
 
     def get_serializer_class(self):
-        # Um serializer por ação: entrada e saída têm formatos diferentes.
         if self.action == "create":
             return VideoUploadSerializer
         if self.action in {"update", "partial_update"}:
@@ -124,13 +98,9 @@ class VideoViewSet(viewsets.ModelViewSet):
         ],
     )
     def create(self, request, *args, **kwargs):
-        # Com o header Idempotency-Key, repetir o POST devolve a resposta original em vez de
-        # criar outro vídeo (retry depois de timeout, clique duplo).
         return run_idempotent(request, lambda: self._create_video(request))
 
     def _create_video(self, request):
-        # O serializer só valida; quem cria é o service. A resposta usa o serializer de
-        # SAÍDA (detalhe), não o de entrada.
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         video = services.create_video(owner=request.user, **serializer.validated_data)
@@ -148,12 +118,9 @@ class VideoViewSet(viewsets.ModelViewSet):
         return Response(output.data)
 
     def perform_destroy(self, instance):
-        # perform_destroy(): gancho do DestroyModelMixin. Troca o DELETE do banco pelo soft
-        # delete do service; a resposta continua 204.
+        # Soft delete em vez do DELETE.
         services.delete_video(video=instance, actor=self.request.user)
 
-    # @action(detail=True): POST /videos/{id}/reprocess/. A view só orquestra: get_object()
-    # (visibilidade → 404), service (regra + lock → 409 se não puder) e resposta.
     @extend_schema(request=None, responses={202: VideoDetailSerializer})
     @action(detail=True, methods=["post"])
     def reprocess(self, request, pk=None):
@@ -161,25 +128,19 @@ class VideoViewSet(viewsets.ModelViewSet):
         services.reprocess_video(video_id=video.pk)
         video = self.get_queryset().get(pk=video.pk)
         output = VideoDetailSerializer(video, context=self.get_serializer_context())
-        # 202 Accepted: o pedido foi aceito, mas o trabalho acontece depois, na fila.
         return Response(output.data, status=status.HTTP_202_ACCEPTED)
 
 
 class TagViewSet(viewsets.ModelViewSet):
-    # ModelViewSet: CRUD completo de tags; a leitura é para todos, a escrita só para admin.
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
-    # Lista curta, usada inteira pelo frontend (filtro e formulário de upload): sem paginação.
+    # Lista curta, usada inteira pelo frontend.
     pagination_class = None
 
     def get_permissions(self):
-        # get_permissions(): permissões diferentes por ação.
         if self.action in {"list", "retrieve"}:
             return [permissions.IsAuthenticated()]
         return [IsAdminRole()]
-
-
-# --------------------------------------------------------------------------- GenericViewSet
 
 
 class CommentViewSet(
@@ -188,19 +149,15 @@ class CommentViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    # GenericViewSet + mixins: CRUD PARCIAL. Comentário não tem update (nem retrieve isolado).
-    # Rota aninhada /videos/{video_pk}/comments/, montada à mão em urls.py.
     serializer_class = CommentSerializer
 
     def get_permissions(self):
-        # Comentar: qualquer um que VÊ o vídeo (get_video → 404 se não vê).
-        # Apagar: o autor ou o admin; os outros recebem 403.
         if self.action == "destroy":
             return [permissions.IsAuthenticated(), IsAuthorOrAdmin()]
         return super().get_permissions()
 
     def get_video(self):
-        # O vídeo precisa estar visível para o usuário; senão 404 (inclusive para comentar).
+        # Vídeo invisível → 404, inclusive para comentar. Cacheado na view (1 query).
         if not hasattr(self, "_video"):
             self._video = get_object_or_404(
                 Video.objects.visible_to(self.request.user), pk=self.kwargs["video_pk"]
@@ -208,13 +165,10 @@ class CommentViewSet(
         return self._video
 
     def get_queryset(self):
-        # swagger_fake_view: na geração do OpenAPI não há request real nem video_pk na URL.
+        # Na geração do OpenAPI não há request real nem video_pk.
         if getattr(self, "swagger_fake_view", False):
             return Comment.objects.none()
-        # Reverso video.comments + select_related do autor (evita N+1 no author_username).
         return self.get_video().comments.select_related("author")
 
     def perform_create(self, serializer):
-        # CRUD simples, sem regra: serializer.save() aqui é idiomático. video e author vêm
-        # do contexto (URL e request.user), nunca do corpo da requisição.
         serializer.save(video=self.get_video(), author=self.request.user)

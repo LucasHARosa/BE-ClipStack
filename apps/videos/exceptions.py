@@ -1,5 +1,3 @@
-"""Exceções de domínio da app videos."""
-
 from apps.core.exceptions import ConflictError
 
 

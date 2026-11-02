@@ -1,13 +1,3 @@
-"""Serializers de vídeos, tags e comentários.
-
-Serializer valida FORMATO (tipo, tamanho, campos obrigatórios, choices) e formata a SAÍDA.
-Regra de NEGÓCIO ("só reprocessa se falhou", "um job ativo por vídeo", "quem pode apagar")
-fica no service, porque:
-- o service também é chamado por tasks, Admin e shell, que não passam pelo serializer;
-- a regra precisa de transação e lock (select_for_update), que não cabem no is_valid();
-- o mesmo vídeo pode ser validado de formas diferentes (upload x update), mas a regra é uma só.
-"""
-
 from pathlib import Path
 
 from django.conf import settings
@@ -26,13 +16,11 @@ class TagSerializer(serializers.ModelSerializer):
 class VideoMetadataSerializer(serializers.ModelSerializer):
     class Meta:
         model = VideoMetadata
-        # thumbnail: com o request no context, o DRF devolve a URL absoluta.
         fields = ("duration_seconds", "resolution", "thumbnail")
 
 
 class LatestJobSerializer(serializers.Serializer):
-    # Serializer puro, de SAÍDA: descreve o último ProcessingJob sem importar a app processing
-    # (fronteira entre apps). Lê os atributos do objeto que receber.
+    # Serializer puro para não importar a app processing.
     id = serializers.IntegerField()
     status = serializers.CharField()
     progress = serializers.IntegerField()
@@ -46,12 +34,9 @@ class LatestJobSerializer(serializers.Serializer):
 
 
 class VideoListSerializer(serializers.ModelSerializer):
-    # source="owner.username": lê um atributo de um objeto relacionado (atravessa a FK).
-    # Sem select_related("owner") no queryset, isso gera 1 query por vídeo (N+1).
+    # Depende do select_related("owner") no queryset (senão, N+1).
     owner_username = serializers.CharField(source="owner.username", read_only=True)
-    # SlugRelatedField: representa a relação por um campo legível (o nome) em vez do id.
     tags = serializers.SlugRelatedField(many=True, read_only=True, slug_field="name")
-    # Atravessa o OneToOne; se o vídeo ainda não tem metadata, o DRF devolve null.
     thumbnail = serializers.ImageField(source="metadata.thumbnail", read_only=True)
 
     class Meta:
@@ -67,15 +52,11 @@ class VideoListSerializer(serializers.ModelSerializer):
             "is_processing",
             "created_at",
         )
-        # is_processing é uma @property do model; o ModelSerializer a aceita como campo
-        # somente leitura.
         read_only_fields = fields
 
 
 class VideoDetailSerializer(VideoListSerializer):
-    # Serializers aninhados read-only: o vídeo com metadata, tags e último job numa resposta só.
     metadata = VideoMetadataSerializer(read_only=True)
-    # SerializerMethodField: campo calculado por um método get_<campo>(self, obj).
     latest_job = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
     can_reprocess = serializers.SerializerMethodField()
@@ -92,28 +73,22 @@ class VideoDetailSerializer(VideoListSerializer):
         )
         read_only_fields = fields
 
-    # @extend_schema_field: diz ao OpenAPI o formato do campo calculado (sem isso, vira string).
     @extend_schema_field(LatestJobSerializer(allow_null=True))
     def get_latest_job(self, obj):
-        # jobs.all() usa o cache do prefetch_related("jobs") feito no selector. Um
-        # .order_by()/.latest() aqui ignoraria o cache e faria 1 query por vídeo.
-        # A ordenação "-created_at" vem do Meta.ordering do ProcessingJob.
+        # jobs.all() usa o prefetch do selector; .order_by()/.latest() fariam 1 query por vídeo.
         jobs = list(obj.jobs.all())
         return LatestJobSerializer(jobs[0]).data if jobs else None
 
     def get_is_owner(self, obj) -> bool:
-        # self.context["request"]: o view do DRF injeta o request no context do serializer.
         request = self.context.get("request")
         return bool(request and request.user.is_authenticated and obj.owner_id == request.user.id)
 
     def get_can_reprocess(self, obj) -> bool:
-        # Só para a INTERFACE decidir se mostra o botão. O service revalida tudo (com lock)
-        # quando o POST /reprocess/ chegar. O admin não reprocessa vídeo dos outros (403).
+        # Só para a interface; o service revalida com lock.
         return self.get_is_owner(obj) and obj.can_be_reprocessed()
 
 
 class DashboardStatsSerializer(serializers.Serializer):
-    # Serializer puro só de SAÍDA: documenta no OpenAPI o formato do dict das estatísticas.
     class TopCommentedSerializer(serializers.Serializer):
         id = serializers.IntegerField()
         title = serializers.CharField()
@@ -129,10 +104,7 @@ class DashboardStatsSerializer(serializers.Serializer):
 
 
 class VideoUploadSerializer(serializers.ModelSerializer):
-    # Serializer só de ENTRADA (multipart/form-data). A view chama is_valid() e passa o
-    # validated_data para services.create_video(); NUNCA chama serializer.save(), porque
-    # criar o vídeo também cria o job e enfileira o processamento. A resposta usa o
-    # VideoDetailSerializer: entrada e saída têm formatos diferentes.
+    # Só entrada: quem cria é o services.create_video() (também cria o job e enfileira).
     tags = serializers.SlugRelatedField(
         many=True, slug_field="name", queryset=Tag.objects.all(), required=False
     )
@@ -141,7 +113,6 @@ class VideoUploadSerializer(serializers.ModelSerializer):
         model = Video
         fields = ("title", "description", "file", "visibility", "tags")
 
-    # validate_<campo>(): validação de UM campo isolado. Roda antes do validate().
     def validate_file(self, value):
         extension = Path(value.name).suffix.lower()
         allowed = settings.VIDEO_ALLOWED_EXTENSIONS
@@ -156,7 +127,7 @@ class VideoUploadSerializer(serializers.ModelSerializer):
 
 
 class VideoUpdateSerializer(serializers.ModelSerializer):
-    # PATCH: o arquivo não pode ser trocado (exigiria reprocessar); só os dados descritivos.
+    # Sem o arquivo: trocá-lo exigiria reprocessar.
     tags = serializers.SlugRelatedField(
         many=True, slug_field="name", queryset=Tag.objects.all(), required=False
     )
@@ -175,6 +146,5 @@ class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ("id", "text", "author", "author_username", "created_at")
-        # author e video vêm do contexto da requisição (request.user e a URL aninhada),
-        # nunca do corpo: senão daria para comentar em nome de outra pessoa.
+        # author vem do request.user, nunca do corpo.
         read_only_fields = ("id", "author", "created_at")
