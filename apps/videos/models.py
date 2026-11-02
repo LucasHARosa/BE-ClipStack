@@ -22,7 +22,7 @@ class Tag(models.Model):
 
 
 class VideoQuerySet(models.QuerySet):
-    def alive(self):
+    def not_deleted(self):
         return self.filter(is_deleted=False)
 
     def completed(self):
@@ -36,12 +36,12 @@ class VideoQuerySet(models.QuerySet):
 
     def visible_to(self, user):
         # O que fica fora daqui vira 404 nas views.
-        qs = self.alive()
+        videos = self.not_deleted()
         if not user.is_authenticated:
-            return qs.public().completed()
+            return videos.public().completed()
         if getattr(user, "is_admin", False):
-            return qs
-        return qs.filter(
+            return videos
+        return videos.filter(
             Q(owner=user) | Q(visibility=Video.Visibility.PUBLIC, status=Video.Status.COMPLETED)
         )
 
@@ -76,7 +76,7 @@ class Video(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     # Não esconde os apagados por padrão (quebraria Admin e FKs reversas): quem lista usa
-    # .alive()/.visible_to().
+    # .not_deleted()/.visible_to().
     objects = VideoQuerySet.as_manager()
 
     class Meta:

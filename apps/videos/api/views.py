@@ -59,7 +59,7 @@ class VideoViewSet(viewsets.ModelViewSet):
         # Prefetch só do que a ação serializa: o destroy não serializa e a lista não tem jobs.
         if self.action == "destroy":
             return Video.objects.visible_to(self.request.user)
-        return selectors.video_queryset(user=self.request.user, with_jobs=self.action != "list")
+        return selectors.visible_videos(user=self.request.user, with_jobs=self.action != "list")
 
     def get_permissions(self):
         # Editar e reprocessar: só o dono. Apagar: o dono ou o admin (moderação).
@@ -156,7 +156,7 @@ class CommentViewSet(
             return [permissions.IsAuthenticated(), IsAuthorOrAdmin()]
         return super().get_permissions()
 
-    def get_video(self):
+    def get_parent_video(self):
         # Vídeo invisível → 404, inclusive para comentar. Cacheado na view (1 query).
         if not hasattr(self, "_video"):
             self._video = get_object_or_404(
@@ -168,7 +168,7 @@ class CommentViewSet(
         # Na geração do OpenAPI não há request real nem video_pk.
         if getattr(self, "swagger_fake_view", False):
             return Comment.objects.none()
-        return self.get_video().comments.select_related("author")
+        return self.get_parent_video().comments.select_related("author")
 
     def perform_create(self, serializer):
-        serializer.save(video=self.get_video(), author=self.request.user)
+        serializer.save(video=self.get_parent_video(), author=self.request.user)

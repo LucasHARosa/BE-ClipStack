@@ -70,7 +70,7 @@ def test_delete_is_soft(user):
     video = VideoFactory(owner=user)
     services.delete_video(video=video, actor=user)
     assert Video.objects.filter(pk=video.pk, is_deleted=True).exists()
-    assert not Video.objects.alive().filter(pk=video.pk).exists()
+    assert not Video.objects.not_deleted().filter(pk=video.pk).exists()
 
 
 def test_update_video_writes_only_given_fields(user):

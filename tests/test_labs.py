@@ -145,7 +145,7 @@ class TestLab5NPlusOne:
             return Video.objects.visible_to(user)  # sem select_related/prefetch_related
 
         with (
-            mock.patch.object(selectors, "video_queryset", naive_queryset),
+            mock.patch.object(selectors, "visible_videos", naive_queryset),
             CaptureQueriesContext(connection) as ctx,
         ):
             auth_client.get(reverse("video-list"))
