@@ -1,5 +1,3 @@
-"""Ponto de entrada WSGI (síncrono). É o que o Gunicorn carrega: `gunicorn config.wsgi`."""
-
 import os
 
 from django.core.wsgi import get_wsgi_application
