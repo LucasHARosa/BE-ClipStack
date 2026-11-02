@@ -32,3 +32,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
     DJANGO_SETTINGS_MODULE=config.settings.prod \
     MEDIA_ROOT=/app/media
 USER app
+# Estáticos (Admin, Swagger) gerados no BUILD, com hash no nome; o WhiteNoise serve. Os valores
+# de ambiente aqui são falsos: o collectstatic só precisa carregar os settings, não do banco.
+RUN DJANGO_SECRET_KEY=build-only DATABASE_URL=sqlite:///tmp/build.db DJANGO_ALLOWED_HOSTS=* \
+    python manage.py collectstatic --noinput
+EXPOSE 8000
+# Padrão da imagem: o servidor web. Workers, beat e flower trocam o comando no compose.
+# 3 workers sync (regra inicial: 2 × núcleos + 1, ajustada medindo); logs de acesso no stdout.
+CMD ["gunicorn", "config.wsgi", "--bind", "0.0.0.0:8000", "--workers", "3", \
+     "--timeout", "60", "--access-logfile", "-"]

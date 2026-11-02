@@ -1,6 +1,7 @@
 # Ambiente local.
 #   Só a infraestrutura (Django rodando no host com uv):  docker compose up -d postgres redis rabbitmq
 #   Infra + workers do Celery, beat e flower:             docker compose up -d
+#   Tudo, inclusive a API com Gunicorn (profile "app"):   docker compose --profile app up -d
 name: clipstack
 
 # Configuração comum dos serviços que usam a imagem do projeto (âncora YAML).
@@ -77,6 +78,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  migrate:
+    <<: *app
+    profiles: [app]
+    # Passo ÚNICO antes da API subir. Se cada container web rodasse migrate ao iniciar, várias
+    # réplicas disputariam as mesmas migrations ao mesmo tempo (e um deploy com N réplicas
+    # rodaria N vezes). Em produção, é um job de release separado.
+    command: python manage.py migrate --noinput
+    restart: "no"
+
+  web:
+    <<: *app
+    profiles: [app]
+    # CMD da imagem: Gunicorn com 3 workers sync.
+    environment:
+      <<: *app-env
+      SERVE_MEDIA: "True"
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      # Só sobe depois que o migrate TERMINOU com sucesso.
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/', timeout=5)"
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
   worker-processing:
     <<: *app
