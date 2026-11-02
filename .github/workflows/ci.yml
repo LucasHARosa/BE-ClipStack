@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela a execução anterior do mesmo branch/PR quando chega um push novo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint, formatação e fronteiras entre apps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run lint-imports
+
+  test:
+    name: Migrations e testes (Postgres)
+    runs-on: ubuntu-latest
+    # Postgres de verdade como service: os testes dependem de select_for_update,
+    # constraints parciais e FILTER, que outro banco não reproduz.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: clipstack
+          POSTGRES_USER: clipstack
+          POSTGRES_PASSWORD: clipstack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U clipstack -d clipstack"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DJANGO_SECRET_KEY: ci-only-secret-key
+      DATABASE_URL: postgres://clipstack:clipstack@localhost:5432/clipstack
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      # Falha se alguém mudou um model e esqueceu de gerar a migration.
+      - run: uv run python manage.py makemigrations --check --dry-run
+      - run: uv run python -m pytest --create-db --cov=apps --cov-report=term-missing
