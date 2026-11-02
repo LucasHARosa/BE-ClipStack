@@ -1,13 +1,4 @@
-"""Exception handler da API (REST_FRAMEWORK["EXCEPTION_HANDLER"]).
-
-O DRF chama esta função para TODA exceção que sai de uma view (inclusive autenticação,
-permissão e throttling, que rodam no initial()). Todo erro sai num formato único:
-
-    {"error": {"code": "...", "message": "...", "details": {...}}}
-
-O frontend trata erros sempre do mesmo jeito: `code` para lógica, `message` para exibir e
-`details` para erros por campo (validação) ou dados extras (wait do 429, status do 409).
-"""
+"""Todo erro sai como {"error": {"code", "message", "details"}}."""
 
 import logging
 
@@ -31,13 +22,9 @@ def api_exception_handler(exc, context):
         set_rollback()
         return Response(_error(exc.code, exc.message, exc.details), status=exc.status_code)
 
-    # O handler padrão converte Http404/PermissionDenied do Django em exceções do DRF, monta a
-    # resposta (com headers como Retry-After e WWW-Authenticate) e marca rollback da transação.
     response = drf_exception_handler(exc, context)
 
     if response is None:
-        # Exceção não tratada (bug): em DEBUG deixa subir para a página de erro do Django;
-        # em produção, loga com traceback (e request_id) e devolve 500 no mesmo formato.
         if settings.DEBUG:
             return None
         logger.exception("unhandled_exception", exc_info=exc)
@@ -48,7 +35,6 @@ def api_exception_handler(exc, context):
         )
 
     if isinstance(exc, exceptions.ValidationError):
-        # Erros por campo vão em details: {"title": ["Este campo é obrigatório."]}
         response.data = _error(
             "validation_error", "Os dados enviados são inválidos.", response.data
         )

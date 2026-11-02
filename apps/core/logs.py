@@ -1,16 +1,9 @@
-"""Logging estruturado em JSON (uma linha por evento), pronto para Loki/ELK/CloudWatch.
-
-Configurado em settings.LOGGING. Todo registro ganha request_id e user_id da requisição atual
-(contextvars), sem que quem loga precise passá-los.
-"""
-
 import json
 import logging
 from datetime import UTC, datetime
 
 from apps.core.request_context import request_id_var, user_id_var
 
-# Atributos que todo LogRecord tem; o resto veio do extra={...} de quem logou.
 _STANDARD_ATTRS = set(logging.makeLogRecord({}).__dict__) | {"message", "asctime"}
 
 

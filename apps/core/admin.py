@@ -1,19 +1,13 @@
-"""Regras de acesso ao Django Admin compartilhadas pelas apps."""
-
 from django.contrib import admin
 
 from .models import IdempotencyKey
 
 
 class ModerationAdminMixin:
-    # has_*_permission(): hooks do ModelAdmin que decidem o que cada usuário pode fazer.
-    # Mesma regra da API: o ADMIN (moderação) vê tudo e apaga para moderação, mas NÃO edita
-    # conteúdo de outras pessoas. Só o superuser (equipe técnica) pode tudo.
-    # Sem isso, um staff sem permissões do auth não veria nada no Admin.
+    # Mesma regra da API: o ADMIN modera (vê e apaga), mas não edita conteúdo alheio.
     moderator_can_delete = False
 
     def _is_moderator(self, request):
-        # getattr: core não importa accounts; basta o user ter a property is_admin.
         return request.user.is_active and getattr(request.user, "is_admin", False)
 
     def has_module_permission(self, request):
@@ -22,7 +16,6 @@ class ModerationAdminMixin:
     def has_view_permission(self, request, obj=None):
         return request.user.is_superuser or self._is_moderator(request)
 
-    # obj=None deixa a mesma assinatura servir para ModelAdmin e para inlines.
     def has_add_permission(self, request, obj=None):
         return request.user.is_superuser
 
@@ -34,14 +27,11 @@ class ModerationAdminMixin:
             self.moderator_can_delete and self._is_moderator(request)
         )
 
-    # Permissão customizada "moderate": usada pelas admin actions declaradas com
-    # @admin.action(permissions=["moderate"]). O Django procura has_<nome>_permission().
     def has_moderate_permission(self, request):
         return request.user.is_superuser or self._is_moderator(request)
 
 
-# Sem o mixin: só o superuser vê (staff sem permissões do auth não acessa). É ferramenta
-# de diagnóstico, não de moderação.
+# Sem o mixin: diagnóstico, só para o superuser.
 @admin.register(IdempotencyKey)
 class IdempotencyKeyAdmin(admin.ModelAdmin):
     list_display = ("key", "user", "request_path", "response_status", "created_at")
