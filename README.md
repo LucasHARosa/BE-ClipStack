@@ -7,7 +7,8 @@ Framework e Celery sobre RabbitMQ.
 > mais comum em aplicações comerciais: apps por domínio, camada de services, DRF, JWT, Celery
 > com filas separadas, Redis para cache e throttling, tudo containerizado.
 
-O cliente web fica em um repositório separado: **ClipStack Web** (React + Vite).
+O cliente web fica em um repositório separado:
+**[ClipStack Web](https://github.com/LucasHARosa/FE-ClipStack)** (React + Vite).
 
 ---
 
